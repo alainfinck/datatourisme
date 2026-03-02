@@ -146,10 +146,7 @@ io.on('connection', (socket) => {
                     }
 
                     const item = items[i];
-                    const name = await item.evaluate(el => {
-                        const h3 = el.querySelector('h3');
-                        return h3 ? h3.innerText.trim() : 'Inconnu';
-                    });
+                    const name = await item.evaluate(el => el ? el.innerText.trim() : 'Inconnu');
 
                     log(`Analyse de l'élément ${i + 1}/${maxItems} : "${name}"`, 'info');
                     socket.emit('status', {

@@ -651,18 +651,27 @@ function App() {
                                                 borderRadius: '0.5rem'
                                             }}
                                         >
-                                            <span style={{ fontWeight: '600', fontSize: '0.9rem', marginBottom: '0.25rem' }}>{se.name}</span>
-                                            <div style={{ display: 'flex', gap: '1rem' }}>
-                                                {se.email && (
-                                                    <span style={{ color: 'var(--accent)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                                        <Mail size={12} /> {se.email}
-                                                    </span>
+                                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                                                {se.image ? (
+                                                    <img src={se.image} alt="" style={{ width: '50px', height: '35px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border)' }} />
+                                                ) : (
+                                                    <div style={{ width: '50px', height: '35px', background: 'var(--border)', borderRadius: '4px' }} />
                                                 )}
-                                                {se.phone && (
-                                                    <span style={{ color: 'var(--primary)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                                        <Globe size={12} /> {se.phone}
-                                                    </span>
-                                                )}
+                                                <div style={{ flex: 1 }}>
+                                                    <span style={{ fontWeight: '600', fontSize: '0.9rem', marginBottom: '0.25rem', display: 'block' }}>{se.name}</span>
+                                                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                                                        {se.email && (
+                                                            <span style={{ color: 'var(--accent)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                                <Mail size={12} /> {se.email}
+                                                            </span>
+                                                        )}
+                                                        {se.phone && (
+                                                            <span style={{ color: 'var(--primary)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                                <Globe size={12} /> {se.phone}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </motion.div>
                                     ))}
