@@ -44,6 +44,7 @@ function App() {
     const [isConnected, setIsConnected] = useState(false);
     const [scrapingStatus, setScrapingStatus] = useState({ message: 'Prêt à scraper', progress: 0 });
     const [scrapedEmails, setScrapedEmails] = useState([]);
+    const [serverHealth, setServerHealth] = useState({ status: 'unknown', details: null });
     const [logs, setLogs] = useState([]);
     const [maxItems, setMaxItems] = useState(20);
     const [scrapingUrl, setScrapingUrl] = useState('https://explore.datatourisme.fr/?type=%5B%22%2FLieu%22%5D');
@@ -163,8 +164,23 @@ function App() {
         }
     };
 
+    const checkHealth = async () => {
+        try {
+            const res = await fetch('/health');
+            if (res.ok) {
+                const data = await res.json();
+                setServerHealth({ status: 'ok', details: data });
+            } else {
+                setServerHealth({ status: 'error', details: 'Statut HTTP ' + res.status });
+            }
+        } catch (err) {
+            setServerHealth({ status: 'error', details: 'Serveur injoignable (CORS ou Off)' });
+        }
+    };
+
     useEffect(() => {
         fetchData();
+        checkHealth();
     }, []);
 
     const handleStartScraping = () => {
@@ -404,6 +420,24 @@ function App() {
                                 >
                                     <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: isConnected ? 'var(--accent)' : 'var(--danger)' }} />
                                     {isConnected ? 'Connecté' : 'Déconnecté'}
+                                </div>
+                                <div style={{
+                                    fontSize: '0.75rem',
+                                    padding: '0.25rem 0.75rem',
+                                    borderRadius: '1rem',
+                                    background: serverHealth.status === 'ok' ? 'rgba(99, 102, 241, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                                    color: serverHealth.status === 'ok' ? 'var(--primary)' : 'var(--warning)',
+                                    border: `1px solid ${serverHealth.status === 'ok' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    cursor: 'pointer'
+                                }}
+                                    onClick={checkHealth}
+                                    title={serverHealth.details ? JSON.stringify(serverHealth.details) : 'Cliquer pour retester la santé du serveur'}
+                                >
+                                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: serverHealth.status === 'ok' ? 'var(--primary)' : 'var(--warning)' }} />
+                                    API: {serverHealth.status === 'ok' ? 'En ligne' : 'Inaccessible'}
                                 </div>
                             </div>
                         </h2>
