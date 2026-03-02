@@ -49,8 +49,12 @@ function App() {
     const logEndRef = useRef(null);
 
     useEffect(() => {
-        // Connect to the same origin (host and port) that served the page
-        socketRef.current = io(window.location.origin);
+        // Connect to the backend. If we are in dev (Vite), connect to 3001.
+        // If we are in prod, connect to the same origin.
+        const isDev = window.location.port === '5173' || window.location.port === '5174' || window.location.port === '5175';
+        const socketUrl = isDev ? `http://${window.location.hostname}:3001` : window.location.origin;
+
+        socketRef.current = io(socketUrl);
 
         socketRef.current.on('connect', () => {
             setIsConnected(true);
