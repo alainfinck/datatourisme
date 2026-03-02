@@ -521,15 +521,15 @@ function App() {
                                 fontSize: '0.8rem',
                                 border: '1px solid var(--border)'
                             }}>
-                                {logs.length === 0 && <div style={{ color: '#444' }}>Attente du lancement...</div>}
+                                {logs.length === 0 && <div style={{ color: '#666' }}>Attente du lancement......</div>}
                                 {logs.map((log, i) => (
                                     <div key={i} style={{ marginBottom: '0.4rem', lineBreak: 'anywhere' }}>
-                                        <span style={{ color: '#555', marginRight: '0.5rem' }}>[{log.timestamp}]</span>
+                                        <span style={{ color: '#999', marginRight: '0.5rem' }}>[{log.timestamp}]</span>
                                         <span style={{
-                                            color: log.type === 'error' ? '#ef4444' :
-                                                log.type === 'success' ? '#10b981' :
-                                                    log.type === 'warn' ? '#f59e0b' :
-                                                        log.type === 'debug' ? '#6366f1' : '#10b981'
+                                            color: log.type === 'error' ? '#ff3131' :
+                                                log.type === 'success' ? '#00ff9d' :
+                                                    log.type === 'warn' ? '#ffcc00' :
+                                                        log.type === 'debug' ? '#00d4ff' : '#00ff9d'
                                         }}>
                                             {log.message}
                                         </span>
