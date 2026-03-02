@@ -7,3 +7,7 @@ public/emails.json
 public/contacts.csv
 test_puppeteer.js
 scrape_emails.js
+._*
+.DS_Store
+**/.DS_Store
+**/._*
