@@ -214,19 +214,41 @@ io.on('connection', (socket) => {
     });
 });
 
-// Static files
-app.use(express.static(path.join(__dirname, 'dist')));
+// Explicitly handle socket.io requests at the app level to be sure they pass through
+app.use('/socket.io', (req, res, next) => {
+    // These should be intercepted by socket.io-server via httpServer
+    // But we use this to log if it's reaching Express
+    console.log(`[Socket.io Debug] Request: ${req.method} ${req.url}`);
+    next();
+});
+
+// Middleware for static files
+app.use(express.static(path.join(__dirname, 'dist'), { index: false })); // index: false to let catch-all handle /
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Catch-all route for SPA support - MUST be last
-app.get(/^(?!\/socket\.io).*$/, (req, res) => {
+// Standard catch-all handler for SPA
+app.get('*', (req, res, next) => {
+    // EXACT match for root or any path that doesn't look like a file/socket.io
+    const isSocket = req.path.startsWith('/socket.io');
+    const hasExtension = req.path.includes('.');
+    
+    if (isSocket) {
+        console.log(`[PASSING] Socket.io request: ${req.url}`);
+        return next();
+    }
+    
+    if (hasExtension) {
+        console.log(`[404] File not found: ${req.url}`);
+        return next(); // Fall through to Express default 404
+    }
+
     console.log(`[SPA Fallback] Serving index.html for: ${req.url}`);
     const indexPath = path.join(__dirname, 'dist', 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
-        console.log(`[404/Fallback] Path: ${req.url} - index.html not found`);
-        res.status(404).send('Application non compilée. Lancez "npm run build" pour générer l\'interface.');
+        console.log(`[CRITICAL] index.html not found at: ${indexPath}`);
+        res.status(404).send('Application non compilée. Veuillez lancer "npm run build".');
     }
 });
 
