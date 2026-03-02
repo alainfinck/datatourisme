@@ -71,8 +71,8 @@ const saveResults = (newResults) => {
     fs.writeFileSync(path.join(publicPath, 'contacts.json'), JSON.stringify(merged, null, 2));
     fs.writeFileSync(path.join(publicPath, 'emails.json'), JSON.stringify(merged, null, 2));
 
-    const csvHeader = 'Nom,Email,Telephone\n';
-    const csvRows = merged.map(r => `"${r.name}","${r.email || ''}","${r.phone || ''}"`).join('\n');
+    const csvHeader = 'Nom,Email,Telephone,ImageURL\n';
+    const csvRows = merged.map(r => `"${r.name}","${r.email || ''}","${r.phone || ''}","${r.image || ''}"`).join('\n');
     fs.writeFileSync(path.join(publicPath, 'contacts.csv'), csvHeader + csvRows);
     return merged;
 };
@@ -155,30 +155,58 @@ io.on('connection', (socket) => {
                     const clickTarget = await item.$('h3') || item;
                     await clickTarget.click();
 
-                    await new Promise(r => setTimeout(r, 4000));
+                    // Wait for the modal/content to load and check for info
+                    log(`Attente des informations pour "${name}"...`, 'info');
+                    
+                    let contactInfo = { email: null, phone: null };
+                    const startTime = Date.now();
+                    const timeout = 6000; // 6s max wait
 
-                    const contactInfo = await page.evaluate(() => {
-                        let email = null;
-                        let phone = null;
-                        const dts = Array.from(document.querySelectorAll('dt'));
-                        const contactDt = dts.find(dt => dt.textContent.trim() === 'Contact');
-                        if (contactDt && contactDt.nextElementSibling) {
-                            const text = contactDt.nextElementSibling.innerText;
-                            const eMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-                            if (eMatch) email = eMatch[0];
-                            const pMatch = text.match(/(?:(?:\+|00)33|0)\s*[1-9](?:[\s.-]*\d{2}){4}/);
-                            if (pMatch) phone = pMatch[0];
+                    while (Date.now() - startTime < timeout) {
+                        contactInfo = await page.evaluate(() => {
+                            const bodyText = document.body.innerText;
+                            
+                            // Extract main image URL
+                            let image = null;
+                            const imgElement = document.querySelector('img[src*="objects"], .main-image img, .gallery img');
+                            if (imgElement) image = imgElement.src;
+
+                            // Extract all emails
+                            const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+                            const emails = bodyText.match(emailRegex) || [];
+                            const uniqueEmails = [...new Set(emails)];
+                            
+                            // Extract all phones (French format)
+                            const phoneRegex = /(?:(?:\+|00)33|0)\s*[1-9](?:[\s.-]*\d{2}){4}/g;
+                            const phones = bodyText.match(phoneRegex) || [];
+                            const uniquePhones = [...new Set(phones.map(p => p.replace(/\s+/g, '')))];
+                            
+                            // Also check hrefs
+                            document.querySelectorAll('a[href^="mailto:"]').forEach(a => {
+                                const e = a.href.replace('mailto:', '').split('?')[0];
+                                if (e && !uniqueEmails.includes(e)) uniqueEmails.push(e);
+                            });
+                            
+                            document.querySelectorAll('a[href^="tel:"]').forEach(a => {
+                                const t = a.href.replace('tel:', '').split('?')[0].replace(/\s+/g, '');
+                                if (t && !uniquePhones.includes(t)) uniquePhones.push(t);
+                            });
+
+                            return { 
+                                email: uniqueEmails.join(', '), 
+                                phone: uniquePhones.join(', '),
+                                image: image
+                            };
+                        });
+
+                        // If we found something, we can consider it a success and proceed
+                        if (contactInfo.email || contactInfo.phone) {
+                            log(`Information(s) trouvée(s) : ${contactInfo.email || 'Pas d\'email'}`, 'debug');
+                            break;
                         }
-                        if (!email) {
-                            const mailto = document.querySelector('a[href^="mailto:"]');
-                            if (mailto) email = mailto.href.replace('mailto:', '').split('?')[0];
-                        }
-                        if (!phone) {
-                            const tel = document.querySelector('a[href^="tel:"]');
-                            if (tel) phone = tel.href.replace('tel:', '').split('?')[0];
-                        }
-                        return { email, phone };
-                    });
+                        
+                        await new Promise(r => setTimeout(r, 500)); // Poll every 500ms
+                    }
 
                     if (contactInfo.email || contactInfo.phone) {
                         const result = { name, email: contactInfo.email, phone: contactInfo.phone };

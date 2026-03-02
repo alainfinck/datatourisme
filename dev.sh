@@ -3,9 +3,13 @@
 # Script pour lancer le frontend et le backend en même temps pour le développement local
 
 echo "Nettoyage des ports (3001 et 5173)..."
-lsof -ti:3001,5173 | xargs kill -9 2>/dev/null
+# Tuer les processus par port
+lsof -ti:3001 | xargs kill -9 2>/dev/null
+lsof -ti:5173 | xargs kill -9 2>/dev/null
+lsof -ti:5174 | xargs kill -9 2>/dev/null
 
-echo "Lancement des serveurs DATAtourisme Explorer..."
+# Un petit délai pour laisser l'OS libérer les ports
+sleep 1
 
 # Lancer le serveur Backend (Scraping/Socket) en arrière-plan
 echo "1. Démarrage du Backend (Port 3001)..."

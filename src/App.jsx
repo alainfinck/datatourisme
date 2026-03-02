@@ -44,6 +44,7 @@ function App() {
     const [isConnected, setIsConnected] = useState(false);
     const [scrapingStatus, setScrapingStatus] = useState({ message: 'Prêt à scraper', progress: 0 });
     const [scrapedEmails, setScrapedEmails] = useState([]);
+    const [savedContacts, setSavedContacts] = useState([]);
     const [serverHealth, setServerHealth] = useState({ status: 'unknown', details: null });
     const [logs, setLogs] = useState([]);
     const [maxItems, setMaxItems] = useState(20);
@@ -137,6 +138,10 @@ function App() {
                 }
             } catch (e) {
                 console.log("No contacts.json found");
+            }
+
+            if (contacts.length > 0) {
+                setSavedContacts(contacts);
             }
 
             Papa.parse(csv, {
@@ -279,10 +284,25 @@ function App() {
                         <Database size={18} /> Explorateur
                     </button>
                     <button
+                        className={`btn ${activeTab === 'database' ? 'btn-primary' : ''}`}
+                        onClick={() => setActiveTab('database')}
+                        style={{
+                            background: activeTab === 'database' ? 'var(--primary)' : 'transparent',
+                            color: activeTab === 'database' ? 'white' : 'var(--text-muted)',
+                            padding: '0.75rem 1.5rem',
+                            borderRadius: '0.6rem',
+                            border: activeTab === 'database' ? 'none' : '1px solid var(--border)',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            opacity: activeTab === 'database' ? 1 : 0.7
+                        }}
+                    >
+                        <Database size={18} /> Base de données
+                    </button>
+                    <button
                         className={`btn ${activeTab === 'scraping' ? 'btn-primary' : ''}`}
                         onClick={() => setActiveTab('scraping')}
                         style={{
-                            background: activeTab === 'scraping' ? 'var(--primary)' : 'rgba(255, 255, 255, 0.05)',
+                            background: activeTab === 'scraping' ? 'var(--primary)' : 'transparent',
                             color: activeTab === 'scraping' ? 'white' : 'var(--text-muted)',
                             padding: '0.75rem 1.5rem',
                             borderRadius: '0.6rem',
@@ -290,15 +310,13 @@ function App() {
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                             opacity: activeTab === 'scraping' ? 1 : 0.7
                         }}
-                        onMouseEnter={(e) => { if (activeTab !== 'scraping') e.currentTarget.style.opacity = 1; e.currentTarget.style.background = activeTab === 'scraping' ? 'var(--primary-hover)' : 'var(--border)'; }}
-                        onMouseLeave={(e) => { if (activeTab !== 'scraping') e.currentTarget.style.opacity = 0.7; e.currentTarget.style.background = activeTab === 'scraping' ? 'var(--primary)' : 'transparent'; }}
                     >
                         <RefreshCw size={18} className={isScraping ? 'spin' : ''} /> Scraping Contacts
                     </button>
                 </div>
             </header>
 
-            {activeTab === 'explorer' ? (
+            {activeTab === 'explorer' && (
                 <>
                     <div className="glass" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
@@ -392,7 +410,66 @@ function App() {
                         <button className="btn" disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} style={{ opacity: currentPage === totalPages ? 0.5 : 1 }}><ChevronRight size={20} /></button>
                     </div>
                 </>
-            ) : (
+            )}
+
+            {activeTab === 'database' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                    <div className="glass" style={{ padding: '2rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                            <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <Database size={24} /> Contacts Enregistrés
+                            </h2>
+                            <div style={{ display: 'flex', gap: '1rem' }}>
+                                <a href="/contacts.json" target="_blank" className="btn" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)' }}>
+                                    Voir JSON
+                                </a>
+                                <a href="/contacts.csv" download className="btn btn-primary">
+                                    <Download size={18} /> Télécharger CSV
+                                </a>
+                            </div>
+                        </div>
+
+                        <div className="table-container">
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr>
+                                        <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Image</th>
+                                        <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Nom</th>
+                                        <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Emails</th>
+                                        <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Téléphones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {savedContacts.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="4" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                                                Aucun contact enregistré pour le moment.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        savedContacts.map((c, i) => (
+                                            <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                                                <td style={{ padding: '0.5rem 1rem' }}>
+                                                    {c.image ? (
+                                                        <img src={c.image} alt={c.name} style={{ width: '60px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
+                                                    ) : (
+                                                        <div style={{ width: '60px', height: '40px', background: 'var(--border)', borderRadius: '4px' }} />
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: '1rem', fontWeight: '500' }}>{c.name}</td>
+                                                <td style={{ padding: '1rem', color: 'var(--accent)' }}>{c.email || '-'}</td>
+                                                <td style={{ padding: '1rem', color: 'var(--primary)' }}>{c.phone || '-'}</td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'scraping' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                     <div className="glass" style={{ padding: '2rem' }}>
                         <h2 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', justifyContent: 'space-between' }}>
