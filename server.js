@@ -298,10 +298,12 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get(/.*/, (req, res, next) => {
     // EXACT match for root or any path that doesn't look like a file/socket.io
     const isSocket = req.path.startsWith('/socket.io');
-    const hasExtension = req.path.includes('.');
+    const isHealth = req.path.startsWith('/health');
+    const isData = req.path.endsWith('.json') || req.path.endsWith('.csv');
+    const hasExtension = req.path.includes('.') && !isData;
     
-    if (isSocket) {
-        console.log(`[PASSING] Socket.io request: ${req.url}`);
+    if (isSocket || isHealth || isData) {
+        console.log(`[PASSING] Backend request: ${req.url}`);
         return next();
     }
     
@@ -321,10 +323,14 @@ app.get(/.*/, (req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, '0.0.0.0', () => {
+// If we are likely behind a Caddy/Nixpacks proxy on the same container, 
+// we might need to stay on 3001 while Caddy takes the main PORT (usually 80/8080/3000)
+const listenPort = (process.env.PORT && process.env.PORT != '3001') ? 3001 : PORT;
+
+httpServer.listen(listenPort, '0.0.0.0', () => {
     console.log('========================================');
     console.log(` SERVER STARTED SUCCESSFULLY `);
-    console.log(` URL: http://0.0.0.0:${PORT} `);
+    console.log(` URL: http://0.0.0.0:${listenPort} `);
     console.log(` NODE_ENV: ${process.env.NODE_ENV} `);
     console.log('========================================');
 });
