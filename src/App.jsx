@@ -16,7 +16,9 @@ import {
     Play,
     StopCircle,
     Database,
-    RefreshCw
+    RefreshCw,
+    Sun,
+    Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { io } from 'socket.io-client';
@@ -45,8 +47,23 @@ function App() {
     const [logs, setLogs] = useState([]);
     const [maxItems, setMaxItems] = useState(20);
     const [scrapingUrl, setScrapingUrl] = useState('https://explore.datatourisme.fr/?type=%5B%22%2FLieu%22%5D');
+    
+    // Theme state
+    const [theme, setTheme] = useState(() => {
+        return localStorage.getItem('theme') || 'light';
+    });
+
     const socketRef = useRef(null);
     const logEndRef = useRef(null);
+
+    useEffect(() => {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+    }, [theme]);
+
+    const toggleTheme = () => {
+        setTheme(prev => prev === 'light' ? 'dark' : 'light');
+    };
 
     useEffect(() => {
         // Connect to the backend. If we are in dev (Vite), connect to 3001.
@@ -216,21 +233,32 @@ function App() {
                     DATAtourisme Explorer
                 </motion.h1>
 
-                <div className="glass" style={{ display: 'inline-flex', padding: '0.4rem', gap: '0.4rem', marginBottom: '1rem', background: 'rgba(15, 23, 42, 0.5)' }}>
+                <div style={{ position: 'fixed', top: '1.5rem', right: '1.5rem', zIndex: 100 }}>
+                    <button 
+                        onClick={toggleTheme}
+                        className="btn glass"
+                        style={{ padding: '0.6rem', borderRadius: '50%', width: '45px', height: '45px' }}
+                        title={theme === 'light' ? 'Mode Sombre' : 'Mode Clair'}
+                    >
+                        {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+                    </button>
+                </div>
+
+                <div className="glass" style={{ display: 'inline-flex', padding: '0.4rem', gap: '0.4rem', marginBottom: '1rem' }}>
                     <button
                         className={`btn ${activeTab === 'explorer' ? 'btn-primary' : ''}`}
                         onClick={() => setActiveTab('explorer')}
                         style={{
-                            background: activeTab === 'explorer' ? 'var(--primary)' : 'rgba(255, 255, 255, 0.05)',
+                            background: activeTab === 'explorer' ? 'var(--primary)' : 'transparent',
                             color: activeTab === 'explorer' ? 'white' : 'var(--text-muted)',
                             padding: '0.75rem 1.5rem',
                             borderRadius: '0.6rem',
-                            border: activeTab === 'explorer' ? 'none' : '1px solid rgba(255, 255, 255, 0.1)',
+                            border: activeTab === 'explorer' ? 'none' : '1px solid var(--border)',
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                             opacity: activeTab === 'explorer' ? 1 : 0.7
                         }}
-                        onMouseEnter={(e) => { if (activeTab !== 'explorer') e.currentTarget.style.opacity = 1; e.currentTarget.style.background = activeTab === 'explorer' ? 'var(--primary-hover)' : 'rgba(255, 255, 255, 0.1)'; }}
-                        onMouseLeave={(e) => { if (activeTab !== 'explorer') e.currentTarget.style.opacity = 0.7; e.currentTarget.style.background = activeTab === 'explorer' ? 'var(--primary)' : 'rgba(255, 255, 255, 0.05)'; }}
+                        onMouseEnter={(e) => { if (activeTab !== 'explorer') e.currentTarget.style.opacity = 1; e.currentTarget.style.background = activeTab === 'explorer' ? 'var(--primary-hover)' : 'var(--border)'; }}
+                        onMouseLeave={(e) => { if (activeTab !== 'explorer') e.currentTarget.style.opacity = 0.7; e.currentTarget.style.background = activeTab === 'explorer' ? 'var(--primary)' : 'transparent'; }}
                     >
                         <Database size={18} /> Explorateur
                     </button>
@@ -242,12 +270,12 @@ function App() {
                             color: activeTab === 'scraping' ? 'white' : 'var(--text-muted)',
                             padding: '0.75rem 1.5rem',
                             borderRadius: '0.6rem',
-                            border: activeTab === 'scraping' ? 'none' : '1px solid rgba(255, 255, 255, 0.1)',
+                            border: activeTab === 'scraping' ? 'none' : '1px solid var(--border)',
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                             opacity: activeTab === 'scraping' ? 1 : 0.7
                         }}
-                        onMouseEnter={(e) => { if (activeTab !== 'scraping') e.currentTarget.style.opacity = 1; e.currentTarget.style.background = activeTab === 'scraping' ? 'var(--primary-hover)' : 'rgba(255, 255, 255, 0.1)'; }}
-                        onMouseLeave={(e) => { if (activeTab !== 'scraping') e.currentTarget.style.opacity = 0.7; e.currentTarget.style.background = activeTab === 'scraping' ? 'var(--primary)' : 'rgba(255, 255, 255, 0.05)'; }}
+                        onMouseEnter={(e) => { if (activeTab !== 'scraping') e.currentTarget.style.opacity = 1; e.currentTarget.style.background = activeTab === 'scraping' ? 'var(--primary-hover)' : 'var(--border)'; }}
+                        onMouseLeave={(e) => { if (activeTab !== 'scraping') e.currentTarget.style.opacity = 0.7; e.currentTarget.style.background = activeTab === 'scraping' ? 'var(--primary)' : 'transparent'; }}
                     >
                         <RefreshCw size={18} className={isScraping ? 'spin' : ''} /> Scraping Contacts
                     </button>
@@ -357,7 +385,7 @@ function App() {
                                 Configuration du Scraping
                             </div>
                             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                                <a href="/contacts.csv" download className="btn" style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.05)' }}>
+                                <a href="/contacts.csv" download className="btn" style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', background: 'var(--border)', color: 'var(--text)' }}>
                                     <Download size={16} /> Télécharger CSV
                                 </a>
                                 <div style={{
@@ -432,7 +460,7 @@ function App() {
                                     <span style={{ color: 'var(--primary)', fontWeight: '500' }}>{scrapingStatus.message}</span>
                                     <span style={{ color: 'var(--text-muted)' }}>{scrapingStatus.progress}%</span>
                                 </div>
-                                <div style={{ height: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: '5px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                                <div style={{ height: '10px', background: 'var(--border)', borderRadius: '5px', overflow: 'hidden', border: '1px solid var(--border)' }}>
                                     <motion.div
                                         initial={{ width: 0 }}
                                         animate={{ width: `${scrapingStatus.progress}%` }}

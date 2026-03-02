@@ -15,8 +15,17 @@ app.use(cors());
 
 // Logging middleware for diagnostic
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    const timestamp = new Date().toISOString();
+    // Ne pas logger les requêtes de polling trop fréquentes pour garder les logs lisibles
+    if (!req.url.includes('transport=polling')) {
+        console.log(`${timestamp} - ${req.method} ${req.url}`);
+    }
     next();
+});
+
+console.log('Environment:', {
+    NODE_ENV: process.env.NODE_ENV,
+    PORT: process.env.PORT
 });
 
 const httpServer = createServer(app);
@@ -210,17 +219,20 @@ app.use(express.static(path.join(__dirname, 'dist')));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Catch-all route for SPA support - MUST be last
-app.get('*', (req, res) => {
+app.get('*', (req, res, next) => {
     // Extra safety for socket.io requests
+    // Important: call next() to let socket.io handle it if it's a websocket upgrade
     if (req.path.startsWith('/socket.io')) {
-        return; 
+        console.log(`[Socket.io Path detected in catch-all]: ${req.url} - Passing to next()`);
+        return next(); 
     }
     
     const indexPath = path.join(__dirname, 'dist', 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
-        res.send('Application non compilée. Lancez "npm run build" pour générer l\'interface.');
+        console.log(`[404/Fallback] Path: ${req.url} - index.html not found`);
+        res.status(404).send('Application non compilée. Lancez "npm run build" pour générer l\'interface.');
     }
 });
 
