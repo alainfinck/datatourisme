@@ -56,10 +56,10 @@ COPY server.js ./
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV PORT=3001
+ENV PORT=8080
 
 # Expose the port
-EXPOSE 3001
+EXPOSE 8080
 
 # Start the application
 CMD ["npm", "start"]
