@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  datatourisme:
+    build: .
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./public:/app/public
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
