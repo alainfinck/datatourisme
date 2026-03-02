@@ -1,15 +1,27 @@
 :root {
   --primary: #6366f1;
   --primary-hover: #4f46e5;
+  --bg: #f8fafc;
+  --card-bg: #ffffff;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --accent: #10b981;
+  --danger: #ef4444;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(0, 0, 0, 0.1);
+  --font-main: "Inter", sans-serif;
+  --font-heading: "Outfit", sans-serif;
+}
+
+[data-theme="dark"] {
   --bg: #0f172a;
   --card-bg: #1e293b;
   --text: #f8fafc;
   --text-muted: #94a3b8;
   --border: #334155;
-  --accent: #10b981;
-  --danger: #ef4444;
-  --font-main: 'Inter', sans-serif;
-  --font-heading: 'Outfit', sans-serif;
+  --glass-bg: rgba(30, 41, 59, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.1);
 }
 
 * {
@@ -25,6 +37,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 h1,
@@ -38,11 +51,12 @@ h6 {
 }
 
 .glass {
-  background: rgba(30, 41, 59, 0.7);
+  background: var(--glass-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--glass-border);
   border-radius: 1rem;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .container {
@@ -133,7 +147,8 @@ tr:last-child td {
 }
 
 tr:hover td {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--border);
+  opacity: 0.8;
 }
 
 .badge {

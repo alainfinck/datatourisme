@@ -211,7 +211,7 @@ function App() {
                 <motion.h1
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    style={{ fontSize: '3rem', marginBottom: '1.5rem', background: 'linear-gradient(to right, #818cf8, #c084fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
+                    style={{ fontSize: '3rem', marginBottom: '1.5rem', background: 'linear-gradient(to right, var(--primary), var(--accent))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
                 >
                     DATAtourisme Explorer
                 </motion.h1>
@@ -436,7 +436,7 @@ function App() {
                                     <motion.div
                                         initial={{ width: 0 }}
                                         animate={{ width: `${scrapingStatus.progress}%` }}
-                                        style={{ height: '100%', background: 'linear-gradient(90deg, var(--primary), #c084fc)' }}
+                                        style={{ height: '100%', background: 'linear-gradient(90deg, var(--primary), var(--accent))' }}
                                     />
                                 </div>
                             </div>
