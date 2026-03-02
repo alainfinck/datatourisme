@@ -131,11 +131,15 @@ io.on('connection', (socket) => {
                     await page.waitForSelector('#scrollContainer h3', { timeout: 10000 });
                     
                     // On récupère toutes les cartes de la liste
-                    const items = await page.$$('#scrollContainer > div');
+                    const items = await page.$$('#scrollContainer .infinite-scroll-component > div');
                     
                     if (i >= items.length) {
                         log(`Besoin de plus d'éléments (actuel: ${items.length}, cible: ${i + 1}), défilement...`, 'info');
-                        await page.evaluate(() => window.scrollBy(0, 3000));
+                        await page.evaluate(() => {
+                            const container = document.querySelector('#scrollContainer');
+                            if (container) container.scrollBy(0, 3000);
+                            else window.scrollBy(0, 3000);
+                        });
                         await new Promise(r => setTimeout(r, 4000)); // Plus de temps pour charger
                         continue;
                     }
@@ -175,14 +179,14 @@ io.on('connection', (socket) => {
                         contactInfo = await page.evaluate(() => {
                             const bodyText = document.body.innerText;
                             
-                            // Extract main image URL - on cherche spécifiquement une image dans le panneau latéral ou dans la carte
+                            // Extract main image URL
                             let image = null;
-                            const imgInPanel = document.querySelector('aside img, .main-image img, .gallery img, [role="dialog"] img');
+                            const imgInPanel = document.querySelector('div[role="dialog"] img[src*=".webp"], aside img, .main-image img');
                             if (imgInPanel) image = imgInPanel.src;
                             
                             // Si pas d'image dans le panneau, on regarde si on l'a sur la carte
                             if (!image) {
-                                const activeItemImg = document.querySelector('#scrollContainer img[src*="http"]');
+                                const activeItemImg = document.querySelector('.infinite-scroll-component img[src*="http"]');
                                 if (activeItemImg) image = activeItemImg.src;
                             }
 
@@ -222,7 +226,7 @@ io.on('connection', (socket) => {
                     }
 
                     // On ferme le panneau latéral impérativement avant de passer à la suite
-                    const closeButton = await page.$('button[title*="Close"], button[aria-label*="Close"], aside button');
+                    const closeButton = await page.$('button[aria-label="Close menu"], button[title*="Close"], aside button');
                     if (closeButton) {
                         await closeButton.click();
                         await new Promise(r => setTimeout(r, 1000));

@@ -437,7 +437,8 @@ function App() {
                                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
                                         <tr>
-                                            <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Image</th>
+                                            <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)', width: '50px' }}>#</th>
+                                            <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)', width: '80px' }}>Image</th>
                                             <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Nom</th>
                                             <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Emails</th>
                                             <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Téléphones</th>
@@ -446,23 +447,26 @@ function App() {
                                     <tbody>
                                         {savedContacts.length === 0 ? (
                                             <tr>
-                                                <td colSpan="4" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                                                <td colSpan="5" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
                                                     Aucun contact enregistré pour le moment.
                                                 </td>
                                             </tr>
                                         ) : (
                                             savedContacts.map((c, i) => (
                                                 <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                                                    <td style={{ padding: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>{i + 1}</td>
                                                     <td style={{ padding: '0.5rem 1rem' }}>
                                                         {c.image ? (
-                                                            <img src={c.image} alt={c.name} style={{ width: '60px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
+                                                            <a href={c.image} target="_blank" rel="noopener noreferrer">
+                                                                <img src={c.image} alt={c.name} style={{ width: '60px', height: '40px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border)' }} />
+                                                            </a>
                                                         ) : (
-                                                            <div style={{ width: '60px', height: '40px', background: 'var(--border)', borderRadius: '4px' }} />
+                                                            <div style={{ width: '60px', height: '40px', background: 'var(--border)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'var(--text-muted)' }}>N/A</div>
                                                         )}
                                                     </td>
                                                     <td style={{ padding: '1rem', fontWeight: '500' }}>{c.name}</td>
-                                                    <td style={{ padding: '1rem', color: 'var(--accent)' }}>{c.email || '-'}</td>
-                                                    <td style={{ padding: '1rem', color: 'var(--primary)' }}>{c.phone || '-'}</td>
+                                                    <td style={{ padding: '1rem', color: 'var(--accent)', fontSize: '0.9rem' }}>{c.email || '-'}</td>
+                                                    <td style={{ padding: '1rem', color: 'var(--primary)', fontSize: '0.9rem' }}>{c.phone || '-'}</td>
                                                 </tr>
                                             ))
                                         )}
