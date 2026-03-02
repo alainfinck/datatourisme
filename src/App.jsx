@@ -495,7 +495,7 @@ function App() {
                                             color: log.type === 'error' ? '#ef4444' :
                                                 log.type === 'success' ? '#10b981' :
                                                     log.type === 'warn' ? '#f59e0b' :
-                                                        log.type === 'debug' ? '#6366f1' : '#ccc'
+                                                        log.type === 'debug' ? '#6366f1' : '#10b981'
                                         }}>
                                             {log.message}
                                         </span>

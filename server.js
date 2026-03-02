@@ -219,14 +219,8 @@ app.use(express.static(path.join(__dirname, 'dist')));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Catch-all route for SPA support - MUST be last
-app.get('*', (req, res, next) => {
-    // Extra safety for socket.io requests
-    // Important: call next() to let socket.io handle it if it's a websocket upgrade
-    if (req.path.startsWith('/socket.io')) {
-        console.log(`[Socket.io Path detected in catch-all]: ${req.url} - Passing to next()`);
-        return next(); 
-    }
-    
+app.get(/^(?!\/socket\.io).*$/, (req, res) => {
+    console.log(`[SPA Fallback] Serving index.html for: ${req.url}`);
     const indexPath = path.join(__dirname, 'dist', 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
