@@ -2,6 +2,9 @@
 
 # Script pour lancer le frontend et le backend en même temps pour le développement local
 
+echo "Nettoyage des ports (3001 et 5173)..."
+lsof -ti:3001,5173 | xargs kill -9 2>/dev/null
+
 echo "Lancement des serveurs DATAtourisme Explorer..."
 
 # Lancer le serveur Backend (Scraping/Socket) en arrière-plan
@@ -17,8 +20,8 @@ FRONTEND_PID=$!
 # Fonction pour tout arrêter proprement quand on fait Ctrl+C
 cleanup() {
     echo -e "\nArrêt des serveurs..."
-    kill $BACKEND_PID
-    kill $FRONTEND_PID
+    kill $BACKEND_PID 2>/dev/null
+    kill $FRONTEND_PID 2>/dev/null
     exit
 }
 
