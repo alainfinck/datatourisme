@@ -120,7 +120,8 @@ io.on('connection', (socket) => {
             await page.waitForSelector('#scrollContainer', { timeout: 30000 });
             socket.emit('status', { message: 'Extraction en cours...', progress: 10 });
 
-            for (let i = 0; i < maxItems; i++) {
+            let i = 0;
+            while (i < maxItems) {
                 if (!isScraping) {
                     log('Arrêt du scraping demandé.', 'warn');
                     break;
@@ -131,9 +132,10 @@ io.on('connection', (socket) => {
                     const items = await page.$$('#scrollContainer > div');
 
                     if (i >= items.length) {
-                        log(`Fin des éléments visibles, défilement...`, 'info');
+                        log(`Besoin de plus d'éléments (actuel: ${items.length}), défilement...`, 'info');
                         await page.evaluate(() => window.scrollBy(0, 2000));
                         await new Promise(r => setTimeout(r, 3000));
+                        // On ne fait pas i++, on recommence la boucle pour re-vérifier la liste
                         continue;
                     }
 
@@ -158,7 +160,7 @@ io.on('connection', (socket) => {
                     // Wait for the modal/content to load and check for info
                     log(`Attente des informations pour "${name}"...`, 'info');
                     
-                    let contactInfo = { email: null, phone: null };
+                    let contactInfo = { email: null, phone: null, image: null };
                     const startTime = Date.now();
                     const timeout = 6000; // 6s max wait
 
@@ -201,7 +203,7 @@ io.on('connection', (socket) => {
 
                         // If we found something, we can consider it a success and proceed
                         if (contactInfo.email || contactInfo.phone) {
-                            log(`Information(s) trouvée(s) : ${contactInfo.email || 'Pas d\'email'}`, 'debug');
+                            log(`Information(s) trouvée(s)`, 'debug');
                             break;
                         }
                         
@@ -209,7 +211,7 @@ io.on('connection', (socket) => {
                     }
 
                     if (contactInfo.email || contactInfo.phone) {
-                        const result = { name, email: contactInfo.email, phone: contactInfo.phone };
+                        const result = { name, email: contactInfo.email, phone: contactInfo.phone, image: contactInfo.image };
                         log(`Contact trouvé pour "${name}"`, 'success');
                         results.push(result);
                         socket.emit('newEmail', result);
@@ -228,6 +230,9 @@ io.on('connection', (socket) => {
                     await page.keyboard.press('Escape').catch(() => { });
                     await new Promise(r => setTimeout(r, 1000));
                 }
+                
+                // On passe à l'élément suivant à la fin de chaque tentative (succès ou erreur)
+                i++;
             }
 
             log('Scraping terminé !', 'success');
