@@ -521,7 +521,7 @@ function App() {
                                 fontSize: '0.8rem',
                                 border: '1px solid var(--border)'
                             }}>
-                                {logs.length === 0 && <div style={{ color: '#666' }}>Attente du lancement......</div>}
+                                {logs.length === 0 && <div style={{ color: '#fff', opacity: 0.8 }}>Attente du lancement...</div>}
                                 {logs.map((log, i) => (
                                     <div key={i} style={{ marginBottom: '0.4rem', lineBreak: 'anywhere' }}>
                                         <span style={{ color: '#999', marginRight: '0.5rem' }}>[{log.timestamp}]</span>
