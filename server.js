@@ -238,7 +238,7 @@ app.use(express.static(path.join(__dirname, 'dist'), { index: false })); // inde
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Standard catch-all handler for SPA
-app.get('*', (req, res, next) => {
+app.get('(.*)', (req, res, next) => {
     // EXACT match for root or any path that doesn't look like a file/socket.io
     const isSocket = req.path.startsWith('/socket.io');
     const hasExtension = req.path.includes('.');
