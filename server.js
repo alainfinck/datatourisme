@@ -131,7 +131,8 @@ io.on('connection', (socket) => {
                     await page.waitForSelector('#scrollContainer h3', { timeout: 10000 });
                     
                     // On récupère toutes les cartes de la liste
-                    const items = await page.$$('#scrollContainer .infinite-scroll-component > div');
+                    // On récupère toutes les cartes de la liste via leurs titres h3
+                    const items = await page.$$('#scrollContainer h3');
                     
                     if (i >= items.length) {
                         log(`Besoin de plus d'éléments (actuel: ${items.length}, cible: ${i + 1}), défilement...`, 'info');
