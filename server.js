@@ -13,27 +13,17 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(cors());
 
-// Serve static files from the React app build directory
-app.use(express.static(path.join(__dirname, 'dist')));
-// Also serve the public directory for CSV/JSON files
-app.use(express.static(path.join(__dirname, 'public')));
+// Logging middleware for diagnostic
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
+});
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
-    }
-});
-
-// Catch-all middleware to serve index.html for any other request (SPA support)
-app.use((req, res, next) => {
-    if (req.path.startsWith('/socket.io')) return next();
-    const indexPath = path.join(__dirname, 'dist', 'index.html');
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-    } else {
-        res.send('Application non compilée. Lancez "npm run build" pour générer l\'interface.');
     }
 });
 
@@ -213,6 +203,25 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('Client disconnected');
     });
+});
+
+// Static files
+app.use(express.static(path.join(__dirname, 'dist')));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Catch-all route for SPA support - MUST be last
+app.get('*', (req, res) => {
+    // Extra safety for socket.io requests
+    if (req.path.startsWith('/socket.io')) {
+        return; 
+    }
+    
+    const indexPath = path.join(__dirname, 'dist', 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.send('Application non compilée. Lancez "npm run build" pour générer l\'interface.');
+    }
 });
 
 const PORT = process.env.PORT || 3001;
