@@ -13,6 +13,17 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(cors());
 
+// Health check endpoint - MUST be before SPA fallback
+app.get('/health', (req, res) => {
+    res.json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString(),
+        node_version: process.version,
+        env: process.env.NODE_ENV,
+        port: process.env.PORT
+    });
+});
+
 // Logging middleware for diagnostic
 app.use((req, res, next) => {
     const timestamp = new Date().toISOString();
@@ -254,5 +265,9 @@ app.get('*', (req, res, next) => {
 
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`Application running on http://localhost:${PORT}`);
+    console.log('========================================');
+    console.log(` SERVER STARTED SUCCESSFULLY `);
+    console.log(` URL: http://0.0.0.0:${PORT} `);
+    console.log(` NODE_ENV: ${process.env.NODE_ENV} `);
+    console.log('========================================');
 });
