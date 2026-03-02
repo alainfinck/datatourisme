@@ -14,7 +14,7 @@ RUN npm run build
 # Production stage
 FROM node:20-slim
 
-# Install Puppeteer dependencies
+# Install Puppeteer dependencies and Chromium
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -35,8 +35,13 @@ RUN apt-get update && apt-get install -y \
     libasound2 \
     libpangocairo-1.0-0 \
     libxshmfence1 \
+    chromium \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
+
+# Set Puppeteer to use the installed Chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
