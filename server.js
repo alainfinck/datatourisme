@@ -13,22 +13,23 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(cors());
 
-// 1. Health check - Highest priority
+// Health check endpoint - First priority
 app.get('/health', (req, res) => {
-    console.log(`[Health Check] Request from ${req.ip} - ${new Date().toISOString()}`);
     res.json({ 
         status: 'OK', 
         timestamp: new Date().toISOString(),
         node_version: process.version,
         env: process.env.NODE_ENV,
-        port: process.env.PORT || 3001
+        port: process.env.PORT || 3000
     });
 });
 
-// 2. Logging middleware
+// Logging middleware for diagnostic
 app.use((req, res, next) => {
+    const timestamp = new Date().toISOString();
+    // Ne pas logger les requêtes de polling trop fréquentes pour garder les logs lisibles
     if (!req.url.includes('transport=polling')) {
-        console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+        console.log(`${timestamp} - ${req.method} ${req.url}`);
     }
     next();
 });
@@ -289,29 +290,27 @@ app.use('/socket.io', (req, res, next) => {
     next();
 });
 
-// 3. Static Files
-app.use(express.static(path.join(__dirname, 'dist'), { index: false }));
+// Middleware for static files
+app.use(express.static(path.join(__dirname, 'dist'), { index: false })); // index: false to let catch-all handle /
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 4. SPA Fallback - DEFINITIVE CATCH-ALL
-app.get('*', (req, res, next) => {
-    // Skip if it looks like a file request that should have been handled by express.static
-    if (req.path.includes('.') && 
-        !req.path.endsWith('.json') && 
-        !req.path.endsWith('.csv') &&
-        !req.path.startsWith('/socket.io')) {
+// Standard catch-all handler for SPA - Defined AFTER all other specific routes
+app.get('(.*)', (req, res, next) => {
+    // If it's a file request that reached here, it's a 404
+    if (req.path.includes('.') && !req.path.endsWith('.json') && !req.path.endsWith('.csv')) {
         return next();
     }
     
+    // SPA Fallback
     const indexPath = path.join(__dirname, 'dist', 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
-        res.status(404).send('Application non compilée (dist/index.html manquant).');
+        res.status(404).send('Application non compilée. Veuillez lancer "npm run build".');
     }
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8080;
 
 httpServer.listen(PORT, '0.0.0.0', () => {
     console.log('========================================');

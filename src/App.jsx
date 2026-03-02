@@ -84,8 +84,8 @@ function App() {
     };
 
     useEffect(() => {
-        const isDev = window.location.port === '5173' || window.location.port === '5174' || window.location.port === '5175' || window.location.port === '3000' || window.location.port === '3001';
-        const socketUrl = isDev ? `http://${window.location.hostname}:3001` : window.location.origin;
+        const isDev = window.location.port === '5173' || window.location.port === '5174' || window.location.port === '5175';
+        const socketUrl = isDev ? `http://${window.location.hostname}:8080` : window.location.origin;
 
         socketRef.current = io(socketUrl);
 

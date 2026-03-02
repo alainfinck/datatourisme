@@ -1,8 +1,0 @@
-[phases.build]
-  cmds = ["npm install", "npm run build"]
-
-[variables]
-  PORT = "3001"
-
-[start]
-  cmd = "node server.js"
