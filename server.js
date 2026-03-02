@@ -15,6 +15,7 @@ app.use(cors());
 
 // Health check endpoint - First priority
 app.get('/health', (req, res) => {
+    console.log(`[Health Check] Request from ${req.ip} - ${new Date().toISOString()}`);
     res.json({ 
         status: 'OK', 
         timestamp: new Date().toISOString(),
