@@ -1,0 +1,9 @@
+node_modules
+dist
+.DS_Store
+*.local
+public/contacts.json
+public/emails.json
+public/contacts.csv
+test_puppeteer.js
+scrape_emails.js
