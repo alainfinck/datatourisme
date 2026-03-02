@@ -13,14 +13,14 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(cors());
 
-// Health check endpoint - MUST be before SPA fallback
+// Health check endpoint - First priority
 app.get('/health', (req, res) => {
     res.json({ 
         status: 'OK', 
         timestamp: new Date().toISOString(),
         node_version: process.version,
         env: process.env.NODE_ENV,
-        port: process.env.PORT
+        port: process.env.PORT || 3000
     });
 });
 
@@ -294,35 +294,23 @@ app.use('/socket.io', (req, res, next) => {
 app.use(express.static(path.join(__dirname, 'dist'), { index: false })); // index: false to let catch-all handle /
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Standard catch-all handler for SPA
-app.get(/.*/, (req, res, next) => {
-    // EXACT match for root or any path that doesn't look like a file/socket.io
-    const isSocket = req.path.startsWith('/socket.io');
-    const isHealth = req.path.startsWith('/health');
-    const isData = req.path.endsWith('.json') || req.path.endsWith('.csv');
-    const hasExtension = req.path.includes('.') && !isData;
-    
-    if (isSocket || isHealth || isData) {
-        console.log(`[PASSING] Backend request: ${req.url}`);
+// Standard catch-all handler for SPA - Defined AFTER all other specific routes
+app.get('*', (req, res, next) => {
+    // If it's a file request that reached here, it's a 404
+    if (req.path.includes('.') && !req.path.endsWith('.json') && !req.path.endsWith('.csv')) {
         return next();
     }
     
-    if (hasExtension) {
-        console.log(`[404] File not found: ${req.url}`);
-        return next(); // Fall through to Express default 404
-    }
-
-    console.log(`[SPA Fallback] Serving index.html for: ${req.url}`);
+    // SPA Fallback
     const indexPath = path.join(__dirname, 'dist', 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
-        console.log(`[CRITICAL] index.html not found at: ${indexPath}`);
         res.status(404).send('Application non compilée. Veuillez lancer "npm run build".');
     }
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 
 httpServer.listen(PORT, '0.0.0.0', () => {
     console.log('========================================');

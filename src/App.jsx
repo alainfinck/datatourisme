@@ -84,8 +84,8 @@ function App() {
     };
 
     useEffect(() => {
-        const isDev = window.location.port === '5173' || window.location.port === '5174' || window.location.port === '5175';
-        const socketUrl = isDev ? `http://${window.location.hostname}:3001` : window.location.origin;
+        const isDev = window.location.port === '5173' || window.location.port === '5174' || window.location.port === '5175' || window.location.port === '3001';
+        const socketUrl = isDev ? `http://${window.location.hostname}:3000` : window.location.origin;
 
         socketRef.current = io(socketUrl);
 
@@ -186,10 +186,11 @@ function App() {
 
     const checkHealth = async () => {
         try {
+            // Use relative path to avoid origin issues
             const res = await fetch('/health');
             if (res.ok) {
-                const data = await res.json();
-                setServerHealth({ status: 'ok', details: data });
+                const healthData = await res.json();
+                setServerHealth({ status: 'ok', details: healthData });
             } else {
                 setServerHealth({ status: 'error', details: 'Statut HTTP ' + res.status });
             }
