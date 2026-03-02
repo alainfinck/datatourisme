@@ -7,8 +7,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/health': 'http://localhost:8080',
-      '/contacts.json': 'http://localhost:8080',
-      '/datatourisme.csv': 'http://localhost:8080',
+      '/csv-files': 'http://localhost:8080',
+      '/sessions': 'http://localhost:8080',
+      '^/.*\\.(json|csv)$': 'http://localhost:8080',
       '/socket.io': {
         target: 'http://localhost:8080',
         ws: true,

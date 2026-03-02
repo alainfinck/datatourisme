@@ -1,4 +1,20 @@
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import puppeteer from 'puppeteer';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import sqlite3 from 'sqlite3';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const CONTACTS_JSON_PATH = path.join(__dirname, 'public', 'contacts.json');
+const CONTACTS_CSV_PATH = path.join(__dirname, 'public', 'contacts.csv');
+const EMAILS_JSON_PATH = path.join(__dirname, 'public', 'emails.json');
+
 const db = new sqlite3.Database(path.join(__dirname, 'data', 'database.sqlite'));
 
 // Ensure data directory exists

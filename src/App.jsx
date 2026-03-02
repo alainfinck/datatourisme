@@ -16,7 +16,10 @@ import {
     Database,
     RefreshCw,
     Sun,
-    Moon
+    Moon,
+    ExternalLink,
+    Copy,
+    Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { io } from 'socket.io-client';
@@ -64,6 +67,9 @@ function App() {
     const [logs, setLogs] = useState([]);
     const [maxItems, setMaxItems] = useState(20);
     const [sessions, setSessions] = useState([]);
+    const [csvFiles, setCsvFiles] = useState([]);
+    const [selectedCsv, setSelectedCsv] = useState('contacts.csv');
+    const [newCsvName, setNewCsvName] = useState('');
     const [startIndex, setStartIndex] = useState(() => {
         return parseInt(localStorage.getItem('lastScrapedIndex')) || 0;
     });
@@ -124,6 +130,7 @@ function App() {
             setIsScraping(false);
             fetchData();
             fetchSessions();
+            fetchCsvFiles(); // Refresh CSV files list after scraping
         });
 
         socketRef.current.on('error', (err) => {
@@ -142,48 +149,58 @@ function App() {
         }
     }, [logs]);
 
-    const fetchData = async () => {
+    const fetchData = async (filename = selectedCsv) => {
         setLoading(true);
         try {
-            const csvResponse = await fetch(CSV_SOURCE_URL);
-            const csvReader = csvResponse.body.getReader();
-            const csvResult = await csvReader.read();
-            const decoder = new TextDecoder('utf-8');
-            const csv = decoder.decode(csvResult.value);
+            const jsonFilename = filename.replace('.csv', '.json');
+            const response = await fetch(`/${jsonFilename}`);
+            if (response.ok) {
+                const results = await response.json();
+                setData(results);
+                setSavedContacts(results); // Assuming savedContacts is the same as data for now
+                setLoading(false);
+            } else {
+                // Fallback to original CSV if JSON not found or error
+                const csvResponse = await fetch(CSV_SOURCE_URL);
+                const csvReader = csvResponse.body.getReader();
+                const csvResult = await csvReader.read();
+                const decoder = new TextDecoder('utf-8');
+                const csv = decoder.decode(csvResult.value);
 
-            let contacts = [];
-            try {
-                const contactResponse = await fetch(CONTACTS_JSON_URL + '?t=' + Date.now());
-                if (contactResponse.ok) {
-                    contacts = await contactResponse.json();
-                }
-            } catch (e) {
-                console.log("No contacts.json found");
-            }
-
-            if (contacts.length > 0) {
-                setSavedContacts(contacts);
-            }
-
-            Papa.parse(csv, {
-                header: true,
-                skipEmptyLines: true,
-                complete: (results) => {
-                    let finalData = results.data;
-                    if (contacts.length > 0) {
-                        finalData = finalData.map(item => {
-                            const match = contacts.find(c => c.name === item.Nom);
-                            return match ? { ...item, EmailScraped: match.email, PhoneScraped: match.phone } : item;
-                        });
+                let contacts = [];
+                try {
+                    const contactResponse = await fetch(CONTACTS_JSON_URL + '?t=' + Date.now());
+                    if (contactResponse.ok) {
+                        contacts = await contactResponse.json();
                     }
-                    setData(finalData);
-                    setLoading(false);
-                },
-                error: (err) => {
-                    setError(err.message);
-                    setLoading(false);
+                } catch (e) {
+                    console.log("No contacts.json found");
                 }
-            });
+
+                if (contacts.length > 0) {
+                    setSavedContacts(contacts);
+                }
+
+                Papa.parse(csv, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: (results) => {
+                        let finalData = results.data;
+                        if (contacts.length > 0) {
+                            finalData = finalData.map(item => {
+                                const match = contacts.find(c => c.name === item.Nom);
+                                return match ? { ...item, EmailScraped: match.email, PhoneScraped: match.phone } : item;
+                            });
+                        }
+                        setData(finalData);
+                        setLoading(false);
+                    },
+                    error: (err) => {
+                        setError(err.message);
+                        setLoading(false);
+                    }
+                });
+            }
         } catch (err) {
             setError("Impossible de charger les données.");
             setLoading(false);
@@ -217,21 +234,52 @@ function App() {
         }
     };
 
+    const fetchCsvFiles = async () => {
+        try {
+            const res = await fetch('/csv-files');
+            if (res.ok) {
+                const files = await res.json();
+                setCsvFiles(files);
+                if (!files.includes(selectedCsv) && files.length > 0) {
+                    setSelectedCsv(files[0]);
+                }
+            }
+        } catch (err) {
+            console.error('Error fetching CSV files:', err);
+        }
+    };
+
+    const [copySuccess, setCopySuccess] = useState('');
+
+    const copyToClipboard = (text) => {
+        navigator.clipboard.writeText(text).then(() => {
+            setCopySuccess(text);
+            setTimeout(() => setCopySuccess(''), 2000);
+        });
+    };
+
     useEffect(() => {
         fetchData();
         checkHealth();
         fetchSessions();
+        fetchCsvFiles();
     }, []);
+
+    useEffect(() => {
+        fetchData(selectedCsv);
+    }, [selectedCsv]);
 
     const handleStartScraping = () => {
         setIsScraping(true);
         setScrapedEmails([]);
         setLogs([]);
         socketRef.current.emit('startScraping', { 
-            maxItems, 
+            maxItems: parseInt(maxItems), 
             url: scrapingUrl, 
-            startIndex,
-            mode: scrapingMode 
+            startIndex: parseInt(startIndex),
+            mode: scrapingMode,
+            filename: selectedCsv,
+            newFilename: newCsvName
         });
     };
 
@@ -427,7 +475,16 @@ function App() {
                                     <AnimatePresence mode="wait">
                                         {paginatedData.map((item, idx) => (
                                             <motion.tr key={item.Identifiant || idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2, delay: idx * 0.01 }}>
-                                                <td style={{ fontWeight: '500', maxWidth: '300px' }}>{item.Nom}</td>
+                                                <td style={{ fontWeight: '500', maxWidth: '300px' }}>
+                                                    <div style={{ fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        {item.Nom}
+                                                        {item.sourceUrl && (
+                                                            <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" title="Voir sur DATAtourisme" style={{ color: 'var(--primary)', opacity: 0.6 }}>
+                                                                <ExternalLink size={14} />
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                </td>
                                                 <td><span className="badge badge-type">{item.Type}</span></td>
                                                 <td>
                                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -437,22 +494,31 @@ function App() {
                                                 </td>
                                                 <td>
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.85rem' }}>
-                                                        {(item.EmailScraped || item['Site internet']?.includes('@')) && (
-                                                            <span style={{ color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                                                <Mail size={12} /> {item.EmailScraped || item['Site internet']}
-                                                            </span>
+                                                        {(item.EmailScraped || (item['Site internet'] && item['Site internet'].includes('@'))) && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                                <span style={{ color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                                    <Mail size={12} /> {item.EmailScraped || item['Site internet']}
+                                                                </span>
+                                                                <button 
+                                                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); copyToClipboard(item.EmailScraped || item['Site internet']); }}
+                                                                    style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: '0.2rem', display: 'flex', alignItems: 'center', opacity: 0.6 }}
+                                                                    title="Copier l'email"
+                                                                >
+                                                                    {copySuccess === (item.EmailScraped || item['Site internet']) ? <Check size={14} /> : <Copy size={14} />}
+                                                                </button>
+                                                            </div>
                                                         )}
                                                         {item.PhoneScraped && (
                                                             <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                                                <Globe size={12} /> {item.PhoneScraped}
+                                                                <Phone size={12} /> {item.PhoneScraped}
                                                             </span>
                                                         )}
                                                     </div>
                                                 </td>
                                                 <td>
                                                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                                        {(item['Site internet']?.includes('@') || item.EmailScraped) ? (
-                                                            <a href={`mailto:${(item.EmailScraped || item['Site internet']).replace('http://', '').replace('https://', '')}`} className="btn" title="Envoyer Email" style={{ padding: '0.4rem', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent)' }}>
+                                                        {(item.EmailScraped || (item['Site internet'] && item['Site internet'].includes('@'))) ? (
+                                                            <a href={`mailto:${(item.EmailScraped || item['Site internet']).replace('mailto:', '')}`} className="btn" title="Envoyer Email" style={{ padding: '0.4rem', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent)' }}>
                                                                 <Mail size={16} />
                                                             </a>
                                                         ) : (
@@ -483,16 +549,31 @@ function App() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                         <div className="glass" style={{ padding: '2rem' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                                <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                    <Database size={24} /> Contacts Enregistrés
-                                </h2>
-                                <div style={{ display: 'flex', gap: '1rem' }}>
-                                    <a href={CONTACTS_JSON_URL} target="_blank" className="btn" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)' }}>
-                                        Voir JSON
-                                    </a>
-                                    <a href={CONTACTS_CSV_URL} download className="btn btn-primary">
-                                        <Download size={18} /> Télécharger CSV
-                                    </a>
+                                <div>
+                                    <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                        <Database size={24} /> Base de données locale
+                                    </h2>
+                                    <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                                        {data.length} contacts extraits jusqu'à présent
+                                    </p>
+                                </div>
+                                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                        <label style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)' }}>Source de données</label>
+                                        <select 
+                                            value={selectedCsv} 
+                                            onChange={(e) => setSelectedCsv(e.target.value)}
+                                            className="input"
+                                            style={{ padding: '0.5rem', minWidth: '200px' }}
+                                        >
+                                            {csvFiles.map(f => <option key={f} value={f}>{f}</option>)}
+                                        </select>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '1rem' }}>
+                                        <a href={`/${selectedCsv}`} download className="btn btn-primary">
+                                            <Download size={18} /> Télécharger CSV
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
 
@@ -562,7 +643,20 @@ function App() {
                                                             </a>
                                                         )}
                                                     </td>
-                                                    <td style={{ padding: '1rem', color: 'var(--accent)', fontSize: '0.9rem' }}>{c.email || '-'}</td>
+                                                    <td style={{ padding: '1rem', color: 'var(--accent)', fontSize: '0.9rem' }}>
+                                                        {c.email ? (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                                {c.email}
+                                                                <button 
+                                                                    onClick={() => copyToClipboard(c.email)}
+                                                                    style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: '0.2rem', display: 'flex', alignItems: 'center', opacity: 0.6 }}
+                                                                    title="Copier l'email"
+                                                                >
+                                                                    {copySuccess === c.email ? <Check size={14} /> : <Copy size={14} />}
+                                                                </button>
+                                                            </div>
+                                                        ) : '-'}
+                                                    </td>
                                                     <td style={{ padding: '1rem', color: 'var(--primary)', fontSize: '0.9rem' }}>{c.phone || '-'}</td>
                                                 </tr>
                                             ))
@@ -702,6 +796,35 @@ function App() {
                                                 Nouveau fichier
                                             </button>
                                         </div>
+                                        {scrapingMode === 'append' && (
+                                            <div style={{ marginTop: '1rem' }}>
+                                                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Fichier destination</label>
+                                                <select 
+                                                    value={selectedCsv} 
+                                                    onChange={(e) => setSelectedCsv(e.target.value)}
+                                                    className="input"
+                                                    style={{ width: '100%' }}
+                                                    disabled={isScraping}
+                                                >
+                                                    {csvFiles.map(f => <option key={f} value={f}>{f}</option>)}
+                                                </select>
+                                            </div>
+                                        )}
+
+                                        {scrapingMode === 'new' && (
+                                            <div style={{ marginTop: '1rem' }}>
+                                                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Nom du nouveau fichier</label>
+                                                <input 
+                                                    type="text" 
+                                                    value={newCsvName}
+                                                    onChange={(e) => setNewCsvName(e.target.value)}
+                                                    placeholder="ex: restaurants_bretagne.csv"
+                                                    className="input"
+                                                    style={{ width: '100%' }}
+                                                    disabled={isScraping}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                     <div style={{ display: 'flex', gap: '1rem' }}>
                                         {!isScraping ? (
@@ -853,7 +976,14 @@ function App() {
                                                 <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>#{s.id}</td>
                                                 <td style={{ padding: '1rem' }}>
                                                     <div>{new Date(s.start_time).toLocaleString()}</div>
-                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.start_url}</div>
+                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                                        {s.start_url}
+                                                        {s.start_url && (
+                                                            <a href={s.start_url} target="_blank" rel="noopener noreferrer" title="Voir URL de départ" style={{ color: 'var(--primary)', opacity: 0.6 }}>
+                                                                <ExternalLink size={12} />
+                                                            </a>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td style={{ padding: '1rem' }}>{s.items_count || '-'}</td>
                                                 <td style={{ padding: '1rem' }}>
