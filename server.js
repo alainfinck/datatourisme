@@ -129,18 +129,22 @@ io.on('connection', (socket) => {
 
                 try {
                     await page.waitForSelector('#scrollContainer h3', { timeout: 10000 });
-                    // On cherche les divs qui ont un h3 dedans (les cartes)
-                    const items = await page.$$('#scrollContainer h3');
-
+                    
+                    // On récupère toutes les cartes de la liste
+                    const items = await page.$$('#scrollContainer > div');
+                    
                     if (i >= items.length) {
                         log(`Besoin de plus d'éléments (actuel: ${items.length}, cible: ${i + 1}), défilement...`, 'info');
                         await page.evaluate(() => window.scrollBy(0, 3000));
-                        await new Promise(r => setTimeout(r, 3000));
+                        await new Promise(r => setTimeout(r, 4000)); // Plus de temps pour charger
                         continue;
                     }
 
                     const item = items[i];
-                    const name = await item.evaluate(el => el ? el.innerText.trim() : 'Inconnu');
+                    const name = await item.evaluate(el => {
+                        const h3 = el.querySelector('h3');
+                        return h3 ? h3.innerText.trim() : 'Inconnu';
+                    });
 
                     log(`Analyse de l'élément ${i + 1}/${maxItems} : "${name}"`, 'info');
                     socket.emit('status', {
@@ -148,49 +152,50 @@ io.on('connection', (socket) => {
                         progress: Math.round(10 + (i / maxItems) * 85)
                     });
 
+                    // Scroll smooth jusqu'à l'élément
                     await item.evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'smooth' }));
                     await new Promise(r => setTimeout(r, 1000));
 
-                    const clickTarget = await item.$('h3') || item;
-                    await clickTarget.click();
+                    // On clique sur le titre h3 pour ouvrir le panneau latéral
+                    const h3 = await item.$('h3');
+                    if (h3) {
+                        await h3.click();
+                    } else {
+                        await item.click();
+                    }
 
-                    // Wait for the modal/content to load and check for info
+                    // Attendre que le panneau latéral s'affiche et se remplisse
                     log(`Attente des informations pour "${name}"...`, 'info');
                     
                     let contactInfo = { email: null, phone: null, image: null };
                     const startTime = Date.now();
-                    const timeout = 6000; // 6s max wait
+                    const timeout = 8000; // 8s max wait pour le panneau
 
                     while (Date.now() - startTime < timeout) {
                         contactInfo = await page.evaluate(() => {
                             const bodyText = document.body.innerText;
                             
-                            // Extract main image URL
+                            // Extract main image URL - on cherche spécifiquement une image dans le panneau latéral ou dans la carte
                             let image = null;
-                            const imgElement = document.querySelector('img[src*="objects"], .main-image img, .gallery img');
-                            if (imgElement) image = imgElement.src;
+                            const imgInPanel = document.querySelector('aside img, .main-image img, .gallery img, [role="dialog"] img');
+                            if (imgInPanel) image = imgInPanel.src;
+                            
+                            // Si pas d'image dans le panneau, on regarde si on l'a sur la carte
+                            if (!image) {
+                                const activeItemImg = document.querySelector('#scrollContainer img[src*="http"]');
+                                if (activeItemImg) image = activeItemImg.src;
+                            }
 
                             // Extract all emails
                             const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
                             const emails = bodyText.match(emailRegex) || [];
-                            const uniqueEmails = [...new Set(emails)];
+                            const uniqueEmails = [...new Set(emails.map(e => e.toLowerCase()))];
                             
                             // Extract all phones (French format)
                             const phoneRegex = /(?:(?:\+|00)33|0)\s*[1-9](?:[\s.-]*\d{2}){4}/g;
                             const phones = bodyText.match(phoneRegex) || [];
                             const uniquePhones = [...new Set(phones.map(p => p.replace(/\s+/g, '')))];
                             
-                            // Also check hrefs
-                            document.querySelectorAll('a[href^="mailto:"]').forEach(a => {
-                                const e = a.href.replace('mailto:', '').split('?')[0];
-                                if (e && !uniqueEmails.includes(e)) uniqueEmails.push(e);
-                            });
-                            
-                            document.querySelectorAll('a[href^="tel:"]').forEach(a => {
-                                const t = a.href.replace('tel:', '').split('?')[0].replace(/\s+/g, '');
-                                if (t && !uniquePhones.includes(t)) uniquePhones.push(t);
-                            });
-
                             return { 
                                 email: uniqueEmails.join(', '), 
                                 phone: uniquePhones.join(', '),
@@ -198,13 +203,12 @@ io.on('connection', (socket) => {
                             };
                         });
 
-                        // If we found something, we can consider it a success and proceed
-                        if (contactInfo.email || contactInfo.phone) {
-                            log(`Information(s) trouvée(s)`, 'debug');
+                        // Si on a des infos et une image, on peut potentiellement break plus tôt
+                        if ((contactInfo.email || contactInfo.phone) && contactInfo.image) {
                             break;
                         }
                         
-                        await new Promise(r => setTimeout(r, 500)); // Poll every 500ms
+                        await new Promise(r => setTimeout(r, 800)); // Poll every 800ms
                     }
 
                     if (contactInfo.email || contactInfo.phone) {
@@ -212,15 +216,20 @@ io.on('connection', (socket) => {
                         log(`Contact trouvé pour "${name}"`, 'success');
                         results.push(result);
                         socket.emit('newEmail', result);
-                        saveResults([result]); // Auto-save after each find
+                        saveResults([result]);
                     } else {
-                        log(`Aucun contact pour "${name}".`, 'warn');
+                        log(`Aucun contact pour "${name}" (Image: ${contactInfo.image ? 'OK' : 'KO'}).`, 'warn');
                     }
 
-                    const closeButton = await page.$('button[title*="Close"], button[aria-label*="Close"]');
-                    if (closeButton) await closeButton.click();
-                    else await page.keyboard.press('Escape');
-                    await new Promise(r => setTimeout(r, 1000));
+                    // On ferme le panneau latéral impérativement avant de passer à la suite
+                    const closeButton = await page.$('button[title*="Close"], button[aria-label*="Close"], aside button');
+                    if (closeButton) {
+                        await closeButton.click();
+                        await new Promise(r => setTimeout(r, 1000));
+                    } else {
+                        await page.keyboard.press('Escape');
+                        await new Promise(r => setTimeout(r, 1000));
+                    }
 
                 } catch (err) {
                     log(`Erreur sur l'élément ${i + 1} : ${err.message}`, 'error');
@@ -228,7 +237,6 @@ io.on('connection', (socket) => {
                     await new Promise(r => setTimeout(r, 1000));
                 }
                 
-                // On passe à l'élément suivant à la fin de chaque tentative (succès ou erreur)
                 i++;
             }
 
