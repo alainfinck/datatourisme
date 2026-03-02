@@ -1,17 +1,66 @@
-import express from 'express';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
-import cors from 'cors';
-import puppeteer from 'puppeteer';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import sqlite3 from 'sqlite3';
+const db = new sqlite3.Database(path.join(__dirname, 'data', 'database.sqlite'));
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Ensure data directory exists
+const dataDir = path.join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
+
+// Initialize DB schema
+db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        start_url TEXT,
+        start_time DATETIME,
+        end_time DATETIME,
+        items_count INTEGER,
+        csv_path TEXT,
+        status TEXT
+    )`);
+});
+
+// Initial Migration: Populate sessions with existing CSVs
+const initialMigration = () => {
+    const publicPath = path.join(__dirname, 'public');
+    if (!fs.existsSync(publicPath)) return;
+
+    const files = fs.readdirSync(publicPath).filter(f => f.endsWith('.csv') && !f.startsWith('._'));
+    
+    db.get("SELECT COUNT(*) as count FROM sessions", (err, row) => {
+        if (!err && row.count === 0) {
+            console.log('Running initial migration for existing CSVs...');
+            files.forEach(file => {
+                const filePath = path.join(publicPath, file);
+                const content = fs.readFileSync(filePath, 'utf8');
+                const lines = content.split('\n').filter(l => l.trim()).length - 1; // Subtract header
+                
+                db.run(
+                    "INSERT INTO sessions (start_url, start_time, end_time, items_count, csv_path, status) VALUES (?, ?, ?, ?, ?, ?)",
+                    ['Existing File Migration', new Date().toISOString(), new Date().toISOString(), lines, file, 'completed']
+                );
+            });
+        }
+    });
+};
+initialMigration();
 
 const app = express();
 app.use(cors());
+
+// API to list CSV files
+app.get('/csv-files', (req, res) => {
+    const publicPath = path.join(__dirname, 'public');
+    if (!fs.existsSync(publicPath)) return res.json([]);
+    const files = fs.readdirSync(publicPath).filter(f => f.endsWith('.csv') && !f.startsWith('._'));
+    res.json(files);
+});
+
+// API to get scraping history
+app.get('/sessions', (req, res) => {
+    db.all("SELECT * FROM sessions ORDER BY start_time DESC", (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
 
 // Health check endpoint - First priority
 app.get('/health', (req, res) => {
@@ -50,30 +99,39 @@ const io = new Server(httpServer, {
 let isScraping = false;
 
 // Helper to save results to JSON and CSV
-const saveResults = (newResults) => {
+const saveResults = (newResults, clear = false, filename = 'contacts.csv') => {
     const publicPath = path.join(__dirname, 'public');
     if (!fs.existsSync(publicPath)) fs.mkdirSync(publicPath);
 
+    const jsonFilename = filename.replace('.csv', '.json');
+    const jsonPath = path.join(publicPath, jsonFilename);
+
     let existing = [];
-    try {
-        if (fs.existsSync(path.join(publicPath, 'contacts.json'))) {
-            existing = JSON.parse(fs.readFileSync(path.join(publicPath, 'contacts.json'), 'utf8'));
-        }
-    } catch (e) { }
+    if (!clear) {
+        try {
+            if (fs.existsSync(jsonPath)) {
+                existing = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+            }
+        } catch (e) { }
+    }
 
     const merged = [...existing];
     newResults.forEach(nr => {
         const idx = merged.findIndex(r => r.name === nr.name);
         if (idx === -1) merged.push(nr);
-        else merged[idx] = { ...merged[idx], ...nr };
+        else merged[idx] = { ...merged[idx], ...nr }; // Update existing
     });
 
-    fs.writeFileSync(path.join(publicPath, 'contacts.json'), JSON.stringify(merged, null, 2));
-    fs.writeFileSync(path.join(publicPath, 'emails.json'), JSON.stringify(merged, null, 2));
+    fs.writeFileSync(jsonPath, JSON.stringify(merged, null, 2));
+    
+    // Also update the main emails.json for backward compat if it's the default file
+    if (filename === 'contacts.csv') {
+        fs.writeFileSync(EMAILS_JSON_PATH, JSON.stringify(merged, null, 2));
+    }
 
-    const csvHeader = 'Nom,Email,Telephone,Adresse,GPS,ImageURL\n';
-    const csvRows = merged.map(r => `"${r.name}","${r.email || ''}","${r.phone || ''}","${(r.address || '').replace(/"/g, '""')}","${r.gps || ''}","${r.image || ''}"`).join('\n');
-    fs.writeFileSync(path.join(publicPath, 'contacts.csv'), csvHeader + csvRows);
+    const csvHeader = 'Nom,Email,Telephone,Adresse,GPS,ImageURL,SourceURL\n';
+    const csvRows = merged.map(r => `"${r.name}","${r.email || ''}","${r.phone || ''}","${(r.address || '').replace(/"/g, '""')}","${r.gps || ''}","${r.image || ''}","${r.sourceUrl || ''}"`).join('\n');
+    fs.writeFileSync(path.join(publicPath, filename), csvHeader + csvRows);
     return merged;
 };
 
@@ -91,8 +149,27 @@ io.on('connection', (socket) => {
         const maxItems = config.maxItems || 20;
         const startIndex = config.startIndex || 0;
         const startUrl = config.url || 'https://explore.datatourisme.fr/?type=%5B%22%2FLieu%22%5D';
+        const mode = config.mode || 'append';
+        const targetFilename = config.filename || 'contacts.csv';
         const results = [];
         let browser = null;
+
+        if (mode === 'new') {
+            const finalFilename = config.newFilename ? (config.newFilename.endsWith('.csv') ? config.newFilename : `${config.newFilename}.csv`) : targetFilename;
+            console.log(`Mode "Nouveau fichier" détecté (${finalFilename}), réinitialisation...`);
+            saveResults([], true, finalFilename); // Clear files
+            config.filename = finalFilename; // Ensure we use this name for the rest of the session
+        }
+
+        let sessionId = null;
+        const startTimeStr = new Date().toISOString();
+        db.run(
+            "INSERT INTO sessions (start_url, start_time, status, csv_path) VALUES (?, ?, ?, ?)",
+            [startUrl, startTimeStr, 'running', config.filename || targetFilename],
+            function(err) {
+                if (!err) sessionId = this.lastID;
+            }
+        );
 
         const log = (msg, type = 'info') => {
             const timestamp = new Date().toLocaleTimeString();
@@ -207,11 +284,40 @@ io.on('connection', (socket) => {
                             const phoneRegex = /(?:(?:\+|00)33|0)\s*[1-9](?:[\s.-]*\d{2}){4}/g;
                             const phones = bodyText.match(phoneRegex) || [];
                             const uniquePhones = [...new Set(phones.map(p => p.replace(/\s+/g, '')))];
+
+                            // Extract GPS from Google Maps links
+                            let gps = null;
+                            const mapLinks = Array.from(document.querySelectorAll('a[href*="google.com/maps"], a[href*="goo.gl/maps"]'));
+                            for (const link of mapLinks) {
+                                const href = link.href;
+                                const match = href.match(/query=([0-9.-]+)%2C([0-9.-]+)/) || 
+                                              href.match(/query=([0-9.-]+),([0-9.-]+)/) ||
+                                              href.match(/destination=([0-9.-]+)%2C([0-9.-]+)/) ||
+                                              href.match(/destination=([0-9.-]+),([0-9.-]+)/) ||
+                                              href.match(/@([0-9.-]+),([0-9.-]+)/);
+                                if (match) {
+                                    gps = `${match[1]}, ${match[2]}`;
+                                    break;
+                                }
+                            }
+
+                            // Extract address - Look for address block or city/zip code patterns
+                            let address = null;
+                            const selectors = ['[class*="address"]', 'address', '.location', '.info-block', 'aside p'];
+                            for (const selector of selectors) {
+                                const el = document.querySelector(selector);
+                                if (el && /[0-9]{5}/.test(el.innerText)) { // Must contain a zip code to be likely an address
+                                    address = el.innerText.trim().split('\n')[0]; // Take first line
+                                    break;
+                                }
+                            }
                             
                             return { 
                                 email: uniqueEmails.join(', '), 
                                 phone: uniquePhones.join(', '),
-                                image: image
+                                image: image,
+                                gps: gps,
+                                address: address
                             };
                         });
 
@@ -223,6 +329,8 @@ io.on('connection', (socket) => {
                         await new Promise(r => setTimeout(r, 800)); // Poll every 800ms
                     }
 
+                    const sourceUrl = page.url();
+
                     if (contactInfo.email || contactInfo.phone || contactInfo.address) {
                         const result = { 
                             name, 
@@ -230,12 +338,13 @@ io.on('connection', (socket) => {
                             phone: contactInfo.phone, 
                             image: contactInfo.image,
                             address: contactInfo.address,
-                            gps: contactInfo.gps
+                            gps: contactInfo.gps,
+                            sourceUrl: sourceUrl
                         };
                         log(`Contact trouvé pour "${name}"`, 'success');
                         results.push(result);
                         socket.emit('newEmail', result);
-                        saveResults([result]);
+                        saveResults([result], false, config.filename || targetFilename);
                     } else {
                         log(`Aucun contact pour "${name}" (Image: ${contactInfo.image ? 'OK' : 'KO'}).`, 'warn');
                     }
@@ -263,9 +372,22 @@ io.on('connection', (socket) => {
             socket.emit('status', { message: 'Scraping terminé !', progress: 100 });
             socket.emit('finished', results);
 
+            if (sessionId) {
+                db.run(
+                    "UPDATE sessions SET end_time = ?, items_count = ?, status = ? WHERE id = ?",
+                    [new Date().toISOString(), results.length, 'completed', sessionId]
+                );
+            }
+
         } catch (error) {
             log(`Erreur fatale : ${error.message}`, 'error');
             socket.emit('error', error.message);
+            if (sessionId) {
+                db.run(
+                    "UPDATE sessions SET end_time = ?, items_count = ?, status = ? WHERE id = ?",
+                    [new Date().toISOString(), results.length, 'error', sessionId]
+                );
+            }
         } finally {
             if (browser) await browser.close();
             isScraping = false;
@@ -275,6 +397,8 @@ io.on('connection', (socket) => {
     socket.on('stopScraping', () => {
         isScraping = false;
         console.log('Stop requested');
+        // We don't have easy access to sessionId here unless we scope it outside
+        // For now, let's keep it simple. The startScraping loop will break and final block will execute.
     });
 
     socket.on('disconnect', () => {

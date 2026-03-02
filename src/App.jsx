@@ -33,6 +33,9 @@ L.Icon.Default.mergeOptions({
     shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
 });
 
+const CSV_SOURCE_URL = '/datatourisme.csv';
+const CONTACTS_JSON_URL = '/contacts.json';
+const CONTACTS_CSV_URL = '/contacts.csv';
 const ITEMS_PER_PAGE = 20;
 
 function App() {
@@ -60,9 +63,11 @@ function App() {
     const [serverHealth, setServerHealth] = useState({ status: 'unknown', details: null });
     const [logs, setLogs] = useState([]);
     const [maxItems, setMaxItems] = useState(20);
+    const [sessions, setSessions] = useState([]);
     const [startIndex, setStartIndex] = useState(() => {
         return parseInt(localStorage.getItem('lastScrapedIndex')) || 0;
     });
+    const [scrapingMode, setScrapingMode] = useState('append'); // 'append' or 'new'
     const [lastPosition, setLastPosition] = useState(parseInt(localStorage.getItem('lastScrapedIndex')) || 0);
     const [scrapingUrl, setScrapingUrl] = useState('https://explore.datatourisme.fr/?type=%5B%22%2FLieu%22%5D');
     
@@ -118,6 +123,7 @@ function App() {
         socketRef.current.on('finished', (results) => {
             setIsScraping(false);
             fetchData();
+            fetchSessions();
         });
 
         socketRef.current.on('error', (err) => {
@@ -139,7 +145,7 @@ function App() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const csvResponse = await fetch('/datatourisme.csv');
+            const csvResponse = await fetch(CSV_SOURCE_URL);
             const csvReader = csvResponse.body.getReader();
             const csvResult = await csvReader.read();
             const decoder = new TextDecoder('utf-8');
@@ -147,7 +153,7 @@ function App() {
 
             let contacts = [];
             try {
-                const contactResponse = await fetch('/contacts.json?t=' + Date.now());
+                const contactResponse = await fetch(CONTACTS_JSON_URL + '?t=' + Date.now());
                 if (contactResponse.ok) {
                     contacts = await contactResponse.json();
                 }
@@ -199,16 +205,34 @@ function App() {
         }
     };
 
+    const fetchSessions = async () => {
+        try {
+            const res = await fetch('/sessions');
+            if (res.ok) {
+                const sessionData = await res.json();
+                setSessions(sessionData);
+            }
+        } catch (err) {
+            console.error('Error fetching sessions:', err);
+        }
+    };
+
     useEffect(() => {
         fetchData();
         checkHealth();
+        fetchSessions();
     }, []);
 
     const handleStartScraping = () => {
         setIsScraping(true);
         setScrapedEmails([]);
         setLogs([]);
-        socketRef.current.emit('startScraping', { maxItems, url: scrapingUrl });
+        socketRef.current.emit('startScraping', { 
+            maxItems, 
+            url: scrapingUrl, 
+            startIndex,
+            mode: scrapingMode 
+        });
     };
 
     const handleStopScraping = () => {
@@ -335,6 +359,25 @@ function App() {
                     >
                         <RefreshCw size={18} className={isScraping ? 'spin' : ''} /> Scraping Contacts
                     </Link>
+                    <Link
+                        to="/history"
+                        className={`btn ${activeTab === 'history' ? 'btn-primary' : ''}`}
+                        style={{
+                            background: activeTab === 'history' ? 'var(--primary)' : 'transparent',
+                            color: activeTab === 'history' ? 'white' : 'var(--text-muted)',
+                            padding: '0.75rem 1.5rem',
+                            borderRadius: '0.6rem',
+                            border: activeTab === 'history' ? 'none' : '1px solid var(--border)',
+                            textDecoration: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            opacity: activeTab === 'history' ? 1 : 0.7
+                        }}
+                    >
+                        <RefreshCw size={18} /> Historique
+                    </Link>
                 </div>
             </header>
 
@@ -444,10 +487,10 @@ function App() {
                                     <Database size={24} /> Contacts Enregistrés
                                 </h2>
                                 <div style={{ display: 'flex', gap: '1rem' }}>
-                                    <a href="/contacts.json" target="_blank" className="btn" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)' }}>
+                                    <a href={CONTACTS_JSON_URL} target="_blank" className="btn" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)' }}>
                                         Voir JSON
                                     </a>
-                                    <a href="/contacts.csv" download className="btn btn-primary">
+                                    <a href={CONTACTS_CSV_URL} download className="btn btn-primary">
                                         <Download size={18} /> Télécharger CSV
                                     </a>
                                 </div>
@@ -540,7 +583,7 @@ function App() {
                                     Configuration du Scraping
                                 </div>
                                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                                    <a href="/contacts.csv" download className="btn" style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', background: 'var(--border)', color: 'var(--text)' }}>
+                                    <a href={CONTACTS_CSV_URL} download className="btn" style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', background: 'var(--border)', color: 'var(--text)' }}>
                                         <Download size={16} /> Télécharger CSV
                                     </a>
                                     <div style={{
@@ -636,6 +679,29 @@ function App() {
                                             disabled={isScraping}
                                             style={{ fontSize: '1.1rem', padding: '0.8rem 1.2rem' }}
                                         />
+                                    </div>
+                                    <div style={{ flex: '1', minWidth: '200px' }}>
+                                        <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+                                            Mode d'enregistrement
+                                        </label>
+                                        <div className="glass" style={{ display: 'flex', padding: '0.3rem', gap: '0.3rem', borderRadius: '0.6rem' }}>
+                                            <button 
+                                                className={`btn ${scrapingMode === 'append' ? 'btn-primary' : ''}`}
+                                                style={{ flex: 1, fontSize: '0.8rem', padding: '0.6rem', opacity: scrapingMode === 'append' ? 1 : 0.6, background: scrapingMode === 'append' ? 'var(--primary)' : 'transparent' }}
+                                                onClick={() => setScrapingMode('append')}
+                                                disabled={isScraping}
+                                            >
+                                                Continuer existant
+                                            </button>
+                                            <button 
+                                                className={`btn ${scrapingMode === 'new' ? 'btn-primary' : ''}`}
+                                                style={{ flex: 1, fontSize: '0.8rem', padding: '0.6rem', opacity: scrapingMode === 'new' ? 1 : 0.6, background: scrapingMode === 'new' ? 'var(--primary)' : 'transparent' }}
+                                                onClick={() => setScrapingMode('new')}
+                                                disabled={isScraping}
+                                            >
+                                                Nouveau fichier
+                                            </button>
+                                        </div>
                                     </div>
                                     <div style={{ display: 'flex', gap: '1rem' }}>
                                         {!isScraping ? (
@@ -754,6 +820,62 @@ function App() {
                                     ))}
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                } />
+
+                <Route path="/history" element={
+                    <div className="glass" style={{ padding: '2rem' }}>
+                        <h2 style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <RefreshCw size={24} /> Historique des Scrapings
+                        </h2>
+                        <div className="table-container">
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr>
+                                        <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>ID</th>
+                                        <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Date & Heure</th>
+                                        <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Items</th>
+                                        <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Statut</th>
+                                        <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Lien</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {sessions.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="5" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                                                Aucun historique disponible.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        sessions.map((s) => (
+                                            <tr key={s.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                                <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>#{s.id}</td>
+                                                <td style={{ padding: '1rem' }}>
+                                                    <div>{new Date(s.start_time).toLocaleString()}</div>
+                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.start_url}</div>
+                                                </td>
+                                                <td style={{ padding: '1rem' }}>{s.items_count || '-'}</td>
+                                                <td style={{ padding: '1rem' }}>
+                                                    <span className={`badge`} style={{ 
+                                                        background: s.status === 'completed' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                                        color: s.status === 'completed' ? 'var(--accent)' : 'var(--danger)'
+                                                    }}>
+                                                        {s.status}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '1rem' }}>
+                                                    {s.csv_path && (
+                                                        <a href={s.csv_path} download className="btn btn-primary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }}>
+                                                            <Download size={14} /> CSV
+                                                        </a>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 } />
