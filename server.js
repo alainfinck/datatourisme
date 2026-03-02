@@ -12,6 +12,12 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
+
+// Serve static files from the React app build directory
+app.use(express.static(path.join(__dirname, 'dist')));
+// Also serve the public directory for CSV/JSON files
+app.use(express.static(path.join(__dirname, 'public')));
+
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
@@ -20,7 +26,46 @@ const io = new Server(httpServer, {
     }
 });
 
+// Catch-all middleware to serve index.html for any other request (SPA support)
+app.use((req, res, next) => {
+    if (req.path.startsWith('/socket.io')) return next();
+    const indexPath = path.join(__dirname, 'dist', 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.send('Application non compilée. Lancez "npm run build" pour générer l\'interface.');
+    }
+});
+
 let isScraping = false;
+
+// Helper to save results to JSON and CSV
+const saveResults = (newResults) => {
+    const publicPath = path.join(__dirname, 'public');
+    if (!fs.existsSync(publicPath)) fs.mkdirSync(publicPath);
+
+    let existing = [];
+    try {
+        if (fs.existsSync(path.join(publicPath, 'contacts.json'))) {
+            existing = JSON.parse(fs.readFileSync(path.join(publicPath, 'contacts.json'), 'utf8'));
+        }
+    } catch (e) { }
+
+    const merged = [...existing];
+    newResults.forEach(nr => {
+        const idx = merged.findIndex(r => r.name === nr.name);
+        if (idx === -1) merged.push(nr);
+        else merged[idx] = { ...merged[idx], ...nr };
+    });
+
+    fs.writeFileSync(path.join(publicPath, 'contacts.json'), JSON.stringify(merged, null, 2));
+    fs.writeFileSync(path.join(publicPath, 'emails.json'), JSON.stringify(merged, null, 2));
+
+    const csvHeader = 'Nom,Email,Telephone\n';
+    const csvRows = merged.map(r => `"${r.name}","${r.email || ''}","${r.phone || ''}"`).join('\n');
+    fs.writeFileSync(path.join(publicPath, 'contacts.csv'), csvHeader + csvRows);
+    return merged;
+};
 
 io.on('connection', (socket) => {
     console.log('Client connected - ID:', socket.id);
@@ -28,7 +73,6 @@ io.on('connection', (socket) => {
     socket.on('startScraping', async (config) => {
         console.log('Scraping start requested by client:', socket.id, 'with config:', config);
         if (isScraping) {
-            console.log('Scraping already in progress, rejecting request from:', socket.id);
             socket.emit('error', 'Scraping already in progress');
             return;
         }
@@ -67,12 +111,11 @@ io.on('connection', (socket) => {
 
             for (let i = 0; i < maxItems; i++) {
                 if (!isScraping) {
-                    log('Arrêt du scraping demandé par l\'utilisateur.', 'warn');
+                    log('Arrêt du scraping demandé.', 'warn');
                     break;
                 }
 
                 try {
-                    // Re-fetch items to avoid stale handles
                     await page.waitForSelector('#scrollContainer h3', { timeout: 10000 });
                     const items = await page.$$('#scrollContainer > div');
 
@@ -84,13 +127,9 @@ io.on('connection', (socket) => {
                     }
 
                     const item = items[i];
-
-                    // Improved name extraction - try multiple selectors
                     const name = await item.evaluate(el => {
                         const h3 = el.querySelector('h3');
-                        if (h3) return h3.innerText.trim();
-                        const allText = el.innerText.split('\n')[0];
-                        return allText || 'Inconnu';
+                        return h3 ? h3.innerText.trim() : 'Inconnu';
                     });
 
                     log(`Analyse de l'élément ${i + 1}/${maxItems} : "${name}"`, 'info');
@@ -99,39 +138,26 @@ io.on('connection', (socket) => {
                         progress: Math.round(10 + (i / maxItems) * 85)
                     });
 
-                    // Ensure item is in view and click
                     await item.evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'smooth' }));
                     await new Promise(r => setTimeout(r, 1000));
 
-                    // Click on the title or the whole item
                     const clickTarget = await item.$('h3') || item;
                     await clickTarget.click();
 
-                    log(`Attente du chargement du panneau pour "${name}"...`, 'debug');
-                    // Wait for the panel to appear - usually it contains a "Contact" section
                     await new Promise(r => setTimeout(r, 4000));
 
-                    log(`Extraction des contacts pour "${name}"...`, 'debug');
                     const contactInfo = await page.evaluate(() => {
                         let email = null;
                         let phone = null;
-
-                        // Strategy 1: Look for the specific DT/DD structure
                         const dts = Array.from(document.querySelectorAll('dt'));
                         const contactDt = dts.find(dt => dt.textContent.trim() === 'Contact');
-                        if (contactDt) {
-                            const dd = contactDt.nextElementSibling;
-                            if (dd) {
-                                const text = dd.innerText;
-                                const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-                                if (emailMatch) email = emailMatch[0];
-
-                                const phoneMatch = text.match(/(?:(?:\+|00)33|0)\s*[1-9](?:[\s.-]*\d{2}){4}/);
-                                if (phoneMatch) phone = phoneMatch[0];
-                            }
+                        if (contactDt && contactDt.nextElementSibling) {
+                            const text = contactDt.nextElementSibling.innerText;
+                            const eMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+                            if (eMatch) email = eMatch[0];
+                            const pMatch = text.match(/(?:(?:\+|00)33|0)\s*[1-9](?:[\s.-]*\d{2}){4}/);
+                            if (pMatch) phone = pMatch[0];
                         }
-
-                        // Strategy 2: Look for mailto and tel links
                         if (!email) {
                             const mailto = document.querySelector('a[href^="mailto:"]');
                             if (mailto) email = mailto.href.replace('mailto:', '').split('?')[0];
@@ -140,44 +166,22 @@ io.on('connection', (socket) => {
                             const tel = document.querySelector('a[href^="tel:"]');
                             if (tel) phone = tel.href.replace('tel:', '').split('?')[0];
                         }
-
-                        // Strategy 3: Scan all DIVs/leaf nodes for patterns
-                        if (!email || !phone) {
-                            const allDivs = Array.from(document.querySelectorAll('div, span, dd'));
-                            for (const el of allDivs) {
-                                if (el.children.length === 0) {
-                                    const text = el.innerText;
-                                    if (!email) {
-                                        const eMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-                                        if (eMatch) email = eMatch[0];
-                                    }
-                                    if (!phone) {
-                                        const pMatch = text.match(/(?:(?:\+|00)33|0)\s*[1-9](?:[\s.-]*\d{2}){4}/);
-                                        if (pMatch) phone = pMatch[0];
-                                    }
-                                }
-                            }
-                        }
-
                         return { email, phone };
                     });
 
                     if (contactInfo.email || contactInfo.phone) {
                         const result = { name, email: contactInfo.email, phone: contactInfo.phone };
-                        log(`${contactInfo.email ? 'E-mail' : ''}${contactInfo.email && contactInfo.phone ? ' & ' : ''}${contactInfo.phone ? 'Tel' : ''} trouvé pour "${name}"`, 'success');
+                        log(`Contact trouvé pour "${name}"`, 'success');
                         results.push(result);
-                        socket.emit('newEmail', result); // Renamed event to keep compatibility or should I rename it? Let's keep it for now but it sends the whole object
+                        socket.emit('newEmail', result);
+                        saveResults([result]); // Auto-save after each find
                     } else {
-                        log(`Aucun contact trouvé pour "${name}".`, 'warn');
+                        log(`Aucun contact pour "${name}".`, 'warn');
                     }
 
-                    log(`Fermeture du panneau...`, 'debug');
                     const closeButton = await page.$('button[title*="Close"], button[aria-label*="Close"]');
-                    if (closeButton) {
-                        await closeButton.click();
-                    } else {
-                        await page.keyboard.press('Escape');
-                    }
+                    if (closeButton) await closeButton.click();
+                    else await page.keyboard.press('Escape');
                     await new Promise(r => setTimeout(r, 1000));
 
                 } catch (err) {
@@ -187,43 +191,9 @@ io.on('connection', (socket) => {
                 }
             }
 
-            log('Sauvegarde des résultats...', 'info');
-            const publicPath = path.join(__dirname, 'public');
-            if (!fs.existsSync(publicPath)) fs.mkdirSync(publicPath);
-
-            // Load existing contacts to merge
-            let existingContacts = [];
-            try {
-                if (fs.existsSync(path.join(publicPath, 'contacts.json'))) {
-                    existingContacts = JSON.parse(fs.readFileSync(path.join(publicPath, 'contacts.json'), 'utf8'));
-                } else if (fs.existsSync(path.join(publicPath, 'emails.json'))) {
-                    existingContacts = JSON.parse(fs.readFileSync(path.join(publicPath, 'emails.json'), 'utf8'));
-                }
-            } catch (e) { }
-
-            // Merge results
-            const mergedResults = [...existingContacts];
-            results.forEach(newRes => {
-                const idx = mergedResults.findIndex(r => r.name === newRes.name);
-                if (idx === -1) {
-                    mergedResults.push(newRes);
-                } else {
-                    mergedResults[idx] = { ...mergedResults[idx], ...newRes };
-                }
-            });
-
-            // Save JSON
-            fs.writeFileSync(path.join(publicPath, 'contacts.json'), JSON.stringify(mergedResults, null, 2));
-            fs.writeFileSync(path.join(publicPath, 'emails.json'), JSON.stringify(mergedResults, null, 2)); // Keep for compatibility
-
-            // Save CSV
-            const csvHeader = 'Nom,Email,Telephone\n';
-            const csvRows = mergedResults.map(r => `"${r.name}","${r.email || ''}","${r.phone || ''}"`).join('\n');
-            fs.writeFileSync(path.join(publicPath, 'contacts.csv'), csvHeader + csvRows);
-
-            log(`Scraping terminé ! ${results.length} nouveaux contacts récupérés. Fichier CSV généré.`, 'success');
+            log('Scraping terminé !', 'success');
             socket.emit('status', { message: 'Scraping terminé !', progress: 100 });
-            socket.emit('finished', mergedResults);
+            socket.emit('finished', results);
 
         } catch (error) {
             log(`Erreur fatale : ${error.message}`, 'error');
@@ -246,5 +216,5 @@ io.on('connection', (socket) => {
 
 const PORT = 3001;
 httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`Scraper server running on http://localhost:${PORT}`);
+    console.log(`Application running on http://localhost:${PORT}`);
 });

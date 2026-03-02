@@ -49,7 +49,8 @@ function App() {
     const logEndRef = useRef(null);
 
     useEffect(() => {
-        socketRef.current = io('http://' + window.location.hostname + ':3001');
+        // Connect to the same origin (host and port) that served the page
+        socketRef.current = io(window.location.origin);
 
         socketRef.current.on('connect', () => {
             setIsConnected(true);
