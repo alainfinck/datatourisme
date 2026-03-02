@@ -295,7 +295,7 @@ app.use(express.static(path.join(__dirname, 'dist'), { index: false })); // inde
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Standard catch-all handler for SPA - Defined AFTER all other specific routes
-app.get('(.*)', (req, res, next) => {
+app.get('/:index*', (req, res, next) => {
     // If it's a file request that reached here, it's a 404
     if (req.path.includes('.') && !req.path.endsWith('.json') && !req.path.endsWith('.csv')) {
         return next();

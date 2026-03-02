@@ -2,9 +2,9 @@
 
 # Script pour lancer le frontend et le backend en même temps pour le développement local
 
-echo "Nettoyage des ports (3001 et 5173)..."
+echo "Nettoyage des ports (8080 et 5173)..."
 # Tuer les processus par port
-lsof -ti:3001 | xargs kill -9 2>/dev/null
+lsof -ti:8080 | xargs kill -9 2>/dev/null
 lsof -ti:5173 | xargs kill -9 2>/dev/null
 lsof -ti:5174 | xargs kill -9 2>/dev/null
 
@@ -12,7 +12,7 @@ lsof -ti:5174 | xargs kill -9 2>/dev/null
 sleep 1
 
 # Lancer le serveur Backend (Scraping/Socket) en arrière-plan
-echo "1. Démarrage du Backend (Port 3001)..."
+echo "1. Démarrage du Backend (Port 8080)..."
 node server.js &
 BACKEND_PID=$!
 
