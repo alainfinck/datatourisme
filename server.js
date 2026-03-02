@@ -129,21 +129,18 @@ io.on('connection', (socket) => {
 
                 try {
                     await page.waitForSelector('#scrollContainer h3', { timeout: 10000 });
-                    const items = await page.$$('#scrollContainer > div');
+                    // On cherche les divs qui ont un h3 dedans (les cartes)
+                    const items = await page.$$('#scrollContainer h3');
 
                     if (i >= items.length) {
-                        log(`Besoin de plus d'éléments (actuel: ${items.length}), défilement...`, 'info');
-                        await page.evaluate(() => window.scrollBy(0, 2000));
+                        log(`Besoin de plus d'éléments (actuel: ${items.length}, cible: ${i + 1}), défilement...`, 'info');
+                        await page.evaluate(() => window.scrollBy(0, 3000));
                         await new Promise(r => setTimeout(r, 3000));
-                        // On ne fait pas i++, on recommence la boucle pour re-vérifier la liste
                         continue;
                     }
 
                     const item = items[i];
-                    const name = await item.evaluate(el => {
-                        const h3 = el.querySelector('h3');
-                        return h3 ? h3.innerText.trim() : 'Inconnu';
-                    });
+                    const name = await item.evaluate(el => el ? el.innerText.trim() : 'Inconnu');
 
                     log(`Analyse de l'élément ${i + 1}/${maxItems} : "${name}"`, 'info');
                     socket.emit('status', {
