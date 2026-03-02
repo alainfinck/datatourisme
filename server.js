@@ -71,8 +71,8 @@ const saveResults = (newResults) => {
     fs.writeFileSync(path.join(publicPath, 'contacts.json'), JSON.stringify(merged, null, 2));
     fs.writeFileSync(path.join(publicPath, 'emails.json'), JSON.stringify(merged, null, 2));
 
-    const csvHeader = 'Nom,Email,Telephone,ImageURL\n';
-    const csvRows = merged.map(r => `"${r.name}","${r.email || ''}","${r.phone || ''}","${r.image || ''}"`).join('\n');
+    const csvHeader = 'Nom,Email,Telephone,Adresse,GPS,ImageURL\n';
+    const csvRows = merged.map(r => `"${r.name}","${r.email || ''}","${r.phone || ''}","${(r.address || '').replace(/"/g, '""')}","${r.gps || ''}","${r.image || ''}"`).join('\n');
     fs.writeFileSync(path.join(publicPath, 'contacts.csv'), csvHeader + csvRows);
     return merged;
 };
@@ -89,6 +89,7 @@ io.on('connection', (socket) => {
 
         isScraping = true;
         const maxItems = config.maxItems || 20;
+        const startIndex = config.startIndex || 0;
         const startUrl = config.url || 'https://explore.datatourisme.fr/?type=%5B%22%2FLieu%22%5D';
         const results = [];
         let browser = null;
@@ -120,8 +121,8 @@ io.on('connection', (socket) => {
             await page.waitForSelector('#scrollContainer', { timeout: 30000 });
             socket.emit('status', { message: 'Extraction en cours...', progress: 10 });
 
-            let i = 0;
-            while (i < maxItems) {
+            let i = startIndex;
+            while (results.length < maxItems) {
                 if (!isScraping) {
                     log('Arrêt du scraping demandé.', 'warn');
                     break;
@@ -130,28 +131,31 @@ io.on('connection', (socket) => {
                 try {
                     await page.waitForSelector('#scrollContainer h3', { timeout: 10000 });
                     
-                    // On récupère toutes les cartes de la liste
-                    // On récupère toutes les cartes de la liste via leurs titres h3
-                    const items = await page.$$('#scrollContainer h3');
+                    // Sélecteur robuste identifié via inspection
+                    const items = await page.$$('#scrollContainer .infinite-scroll-component h3.font-bold');
                     
                     if (i >= items.length) {
                         log(`Besoin de plus d'éléments (actuel: ${items.length}, cible: ${i + 1}), défilement...`, 'info');
                         await page.evaluate(() => {
                             const container = document.querySelector('#scrollContainer');
-                            if (container) container.scrollBy(0, 3000);
-                            else window.scrollBy(0, 3000);
+                            if (container) {
+                                container.scrollBy(0, 3000);
+                            } else {
+                                window.scrollBy(0, 3000);
+                            }
                         });
-                        await new Promise(r => setTimeout(r, 4000)); // Plus de temps pour charger
+                        await new Promise(r => setTimeout(r, 4000));
                         continue;
                     }
 
                     const item = items[i];
                     const name = await item.evaluate(el => el ? el.innerText.trim() : 'Inconnu');
 
-                    log(`Analyse de l'élément ${i + 1}/${maxItems} : "${name}"`, 'info');
+                    log(`Analyse de l'élément ${i + 1} (Résultat: ${results.length + 1}/${maxItems}) : "${name}"`, 'info');
                     socket.emit('status', {
                         message: `Analyse de : ${name}`,
-                        progress: Math.round(10 + (i / maxItems) * 85)
+                        progress: Math.round(10 + (results.length / maxItems) * 85),
+                        currentIndex: i + 1
                     });
 
                     // Scroll smooth jusqu'à l'élément
@@ -180,12 +184,18 @@ io.on('connection', (socket) => {
                             // Extract main image URL
                             let image = null;
                             const imgInPanel = document.querySelector('div[role="dialog"] img[src*=".webp"], aside img, .main-image img');
-                            if (imgInPanel) image = imgInPanel.src;
+                            
+                            // Ignorer l'image si c'est un placeholder (ex: SVG ou petite icône)
+                            if (imgInPanel && !imgInPanel.src.includes('data:image/svg+xml')) {
+                                image = imgInPanel.src;
+                            }
                             
                             // Si pas d'image dans le panneau, on regarde si on l'a sur la carte
                             if (!image) {
                                 const activeItemImg = document.querySelector('.infinite-scroll-component img[src*="http"]');
-                                if (activeItemImg) image = activeItemImg.src;
+                                if (activeItemImg && !activeItemImg.src.includes('data:image/svg+xml')) {
+                                    image = activeItemImg.src;
+                                }
                             }
 
                             // Extract all emails
@@ -213,8 +223,15 @@ io.on('connection', (socket) => {
                         await new Promise(r => setTimeout(r, 800)); // Poll every 800ms
                     }
 
-                    if (contactInfo.email || contactInfo.phone) {
-                        const result = { name, email: contactInfo.email, phone: contactInfo.phone, image: contactInfo.image };
+                    if (contactInfo.email || contactInfo.phone || contactInfo.address) {
+                        const result = { 
+                            name, 
+                            email: contactInfo.email, 
+                            phone: contactInfo.phone, 
+                            image: contactInfo.image,
+                            address: contactInfo.address,
+                            gps: contactInfo.gps
+                        };
                         log(`Contact trouvé pour "${name}"`, 'success');
                         results.push(result);
                         socket.emit('newEmail', result);

@@ -21,6 +21,17 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { io } from 'socket.io-client';
 import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Fix for default marker icon in Leaflet
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
+    iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+});
 
 const ITEMS_PER_PAGE = 20;
 
@@ -49,6 +60,10 @@ function App() {
     const [serverHealth, setServerHealth] = useState({ status: 'unknown', details: null });
     const [logs, setLogs] = useState([]);
     const [maxItems, setMaxItems] = useState(20);
+    const [startIndex, setStartIndex] = useState(() => {
+        return parseInt(localStorage.getItem('lastScrapedIndex')) || 0;
+    });
+    const [lastPosition, setLastPosition] = useState(parseInt(localStorage.getItem('lastScrapedIndex')) || 0);
     const [scrapingUrl, setScrapingUrl] = useState('https://explore.datatourisme.fr/?type=%5B%22%2FLieu%22%5D');
     
     // Theme state
@@ -86,6 +101,10 @@ function App() {
 
         socketRef.current.on('status', (status) => {
             setScrapingStatus(status);
+            if (status.currentIndex) {
+                setLastPosition(status.currentIndex);
+                localStorage.setItem('lastScrapedIndex', status.currentIndex.toString());
+            }
         });
 
         socketRef.current.on('log', (log) => {
@@ -433,6 +452,31 @@ function App() {
                                 </div>
                             </div>
 
+                            {/* Leaflet Map Preview */}
+                            <div style={{ height: '400px', width: '100%', marginBottom: '2rem', borderRadius: '1rem', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                                <MapContainer center={[46.603354, 1.888334]} zoom={5} style={{ height: '100%', width: '100%' }}>
+                                    <TileLayer
+                                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                    />
+                                    {savedContacts.filter(c => c.gps && c.gps.includes(',')).map((c, i) => {
+                                        const [lat, lng] = c.gps.split(',').map(s => parseFloat(s.trim()));
+                                        if (isNaN(lat) || isNaN(lng)) return null;
+                                        return (
+                                            <Marker key={i} position={[lat, lng]}>
+                                                <Popup>
+                                                    <div style={{ padding: '0.2rem' }}>
+                                                        <strong style={{ display: 'block', marginBottom: '0.5rem' }}>{c.name}</strong>
+                                                        {c.image && <img src={c.image} alt={c.name} style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '4px', marginBottom: '0.5rem' }} />}
+                                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{c.address}</div>
+                                                    </div>
+                                                </Popup>
+                                            </Marker>
+                                        );
+                                    })}
+                                </MapContainer>
+                            </div>
+
                             <div className="table-container">
                                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
@@ -440,6 +484,7 @@ function App() {
                                             <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)', width: '50px' }}>#</th>
                                             <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)', width: '80px' }}>Image</th>
                                             <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Nom</th>
+                                            <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Adresse & GPS</th>
                                             <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Emails</th>
                                             <th style={{ textAlign: 'left', padding: '1rem', borderBottom: '2px solid var(--border)' }}>Téléphones</th>
                                         </tr>
@@ -447,7 +492,7 @@ function App() {
                                     <tbody>
                                         {savedContacts.length === 0 ? (
                                             <tr>
-                                                <td colSpan="5" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                                                <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
                                                     Aucun contact enregistré pour le moment.
                                                 </td>
                                             </tr>
@@ -465,6 +510,14 @@ function App() {
                                                         )}
                                                     </td>
                                                     <td style={{ padding: '1rem', fontWeight: '500' }}>{c.name}</td>
+                                                    <td style={{ padding: '1rem', fontSize: '0.85rem' }}>
+                                                        <div style={{ color: 'var(--text-muted)', marginBottom: '0.25rem' }}>{c.address || '-'}</div>
+                                                        {c.gps && (
+                                                            <a href={`https://www.google.com/maps/search/?api=1&query=${c.gps}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', textDecoration: 'none', borderBottom: '1px dashed var(--primary)' }}>
+                                                                <MapPin size={12} /> {c.gps}
+                                                            </a>
+                                                        )}
+                                                    </td>
                                                     <td style={{ padding: '1rem', color: 'var(--accent)', fontSize: '0.9rem' }}>{c.email || '-'}</td>
                                                     <td style={{ padding: '1rem', color: 'var(--primary)', fontSize: '0.9rem' }}>{c.phone || '-'}</td>
                                                 </tr>
@@ -547,15 +600,38 @@ function App() {
                                 </div>
 
                                 <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                                    <div style={{ flex: '1', minWidth: '200px' }}>
+                                    <div style={{ flex: '1', minWidth: '150px' }}>
                                         <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                                            Nombre d'éléments à analyser
+                                            Index de départ
+                                        </label>
+                                        <div style={{ position: 'relative' }}>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={startIndex}
+                                                onChange={(e) => setStartIndex(parseInt(e.target.value) || 0)}
+                                                disabled={isScraping}
+                                                style={{ fontSize: '1.1rem', padding: '0.8rem 1.2rem' }}
+                                            />
+                                            {lastPosition > 0 && !isScraping && (
+                                                <button 
+                                                    onClick={() => setStartIndex(lastPosition)}
+                                                    style={{ position: 'absolute', right: '-120px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--primary)', fontSize: '0.75rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                                >
+                                                    Continuer à {lastPosition}
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div style={{ flex: '1', minWidth: '150px' }}>
+                                        <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+                                            Max items
                                         </label>
                                         <input
                                             type="number"
                                             className="input"
                                             value={maxItems}
-                                            onChange={(e) => setMaxItems(parseInt(e.target.value))}
+                                            onChange={(e) => setMaxItems(parseInt(e.target.value) || 0)}
                                             disabled={isScraping}
                                             style={{ fontSize: '1.1rem', padding: '0.8rem 1.2rem' }}
                                         />
